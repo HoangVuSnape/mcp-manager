@@ -1,0 +1,13 @@
+{
+  "swagger": [
+    {
+      "file": "examples/swagger-pet-store.json",
+      "apiBaseUrl": "https://petstore.swagger.io/v2",
+      "prefix": "petstore"
+    }
+  ],
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000
+  }
+}

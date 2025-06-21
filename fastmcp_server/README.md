@@ -14,6 +14,12 @@ pip install -r requirements.txt  # install dependencies
 python server.py [config.json or URL]
 ```
 
+### Running tests
+
+```bash
+pytest
+```
+
 Alternatively set the `CONFIG_URL` environment variable to a file path or URL
 before running the server.
 

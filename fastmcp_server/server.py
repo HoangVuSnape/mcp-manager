@@ -80,17 +80,9 @@ def load_config(source: str | None = None) -> dict:
         cfg["swagger"] = [cfg["swagger"]]
     return cfg
 
-async def main(config_source: str | None = None) -> None:
-    """Start the FastMCP server with configuration from a file or URL."""
-    if config_source is None:
-        # default to config.json in the same directory or CONFIG_URL env var
-        config_source = os.environ.get(
-            "CONFIG_URL",
-            os.path.join(os.path.dirname(__file__), "config.json"),
-        )
 
-    cfg = load_config(config_source)
-
+async def create_app(cfg: dict) -> Starlette:
+    """Build and return the Starlette application for the given config."""
     root_server = FastMCP(name="Swagger MCP Server")
     app = Starlette()
 
@@ -137,12 +129,37 @@ async def main(config_source: str | None = None) -> None:
     async def health(_: Request):
         return JSONResponse({"status": "ok"})
 
+    async def list_servers(_: Request):
+        return JSONResponse({"servers": [p for p, _ in server_info]})
+
     app.add_route("/health", health, methods=["GET"])
+    app.add_route("/list-server", list_servers, methods=["GET"])
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())
 
-    config = uvicorn.Config(app, host=cfg["server"]["host"], port=cfg["server"]["port"])
+    async def close_clients() -> None:
+        for client in clients:
+            await client.aclose()
+
+    app.add_event_handler("shutdown", close_clients)
+    return app
+
+async def main(config_source: str | None = None) -> None:
+    """Start the FastMCP server with configuration from a file or URL."""
+    if config_source is None:
+        # default to config.json in the same directory or CONFIG_URL env var
+        config_source = os.environ.get(
+            "CONFIG_URL",
+            os.path.join(os.path.dirname(__file__), "config.json"),
+        )
+
+    cfg = load_config(config_source)
+    app = await create_app(cfg)
+
+    config = uvicorn.Config(
+        app, host=cfg["server"]["host"], port=cfg["server"]["port"]
+    )
     server_uvicorn = uvicorn.Server(config)
     await server_uvicorn.serve()
 

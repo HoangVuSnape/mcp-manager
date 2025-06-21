@@ -75,3 +75,18 @@ def test_get_prefix_from_url(monkeypatch):
     asyncio.run(client.aclose())
     assert len(tools) == 0
     assert server._get_prefix(spec_cfg) == "pet"
+
+
+def test_list_server_endpoint():
+    cfg = server.load_config()
+
+    app = asyncio.run(server.create_app(cfg))
+
+    async def _call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/list-server")
+
+    resp = asyncio.run(_call())
+    assert resp.status_code == 200
+    assert cfg["swagger"][0]["prefix"] in resp.json()["servers"]

@@ -62,6 +62,8 @@ async def main(config_source: str | None = None) -> None:
     root_server = FastMCP(name="Swagger MCP Server")
     app = Starlette()
 
+    server_info: list[tuple[str, int]] = []
+
     for spec_cfg in cfg["swagger"]:
         # Load the OpenAPI spec from a file or URL
         if spec_cfg.get("file"):
@@ -90,6 +92,8 @@ async def main(config_source: str | None = None) -> None:
             name=f"{spec_cfg.get('prefix', 'api')} server",
         )
 
+        tool_count = len(await sub_server.get_tools())
+
         if spec_cfg.get("prefix"):
             prefix = spec_cfg["prefix"]
         else:
@@ -98,11 +102,22 @@ async def main(config_source: str | None = None) -> None:
             else:
                 prefix = os.path.splitext(os.path.basename(spec_cfg["url"].split("?")[0]))[0]
 
+        server_info.append((prefix, tool_count))
+
         # Mount tools into the shared root server
         root_server.mount(prefix, sub_server)
 
         # Mount individual SSE app for this swagger file
         app.mount(f"/{prefix}", sub_server.sse_app())
+
+    print(f"Loaded {len(server_info)} Swagger servers:")
+    for prefix, count in server_info:
+        print(f"  - {prefix}: {count} tools")
+    try:
+        total_tools = len(await root_server.get_tools())
+        print(f"Total tools available: {total_tools}")
+    except Exception:
+        pass
 
     async def health(_: Request):
         return JSONResponse({"status": "ok"})

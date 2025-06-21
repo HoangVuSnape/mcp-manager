@@ -19,6 +19,15 @@ before running the server.
 
 By default the server listens on port `3000`. Each Swagger file becomes its own MCP server mounted under its configured `prefix`. SSE connections for a spec are available at `/<prefix>/sse` with messages posted to `/<prefix>/messages`. A combined server exposing all tools is also mounted at `/sse` and `/messages`. A simple health check is available at `/health`.
 
+When the server starts it prints a short summary of how many tools were loaded for each Swagger file and the total number of tools across all specs:
+
+```
+Loaded N Swagger servers:
+  - prefix1: X tools
+  - prefix2: Y tools
+Total tools available: Z
+```
+
 The OpenAPI schemas to load are configured in `config.json`. Multiple specifications can be provided using the `swagger` array. Each entry requires either a `file` or `url`, an `apiBaseUrl` and a unique `prefix` used for the mount paths.
 
 Example `config.json`:

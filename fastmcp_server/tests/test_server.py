@@ -34,7 +34,7 @@ def test_load_config_remote(monkeypatch):
 
 def test_get_prefix_from_file():
     spec_cfg = {
-        "file": "examples/swagger-pet-store.json",
+        "path": "examples/swagger-pet-store.json",
         "apiBaseUrl": "https://example.com",
     }
     spec = server._load_spec(spec_cfg)
@@ -44,3 +44,34 @@ def test_get_prefix_from_file():
     asyncio.run(client.aclose())
     assert len(tools) > 0
     assert server._get_prefix(spec_cfg) == "swagger-pet-store"
+
+
+def test_get_prefix_from_url(monkeypatch):
+    spec_data = {"openapi": "3.0.0", "paths": {}, "info": {"title": "t", "version": "1"}}
+
+    class FakeResp:
+        def __init__(self, data):
+            self._data = data
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._data
+
+    def fake_get(url):
+        return FakeResp(spec_data)
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    spec_cfg = {
+        "path": "https://example.com/pet.json",
+        "apiBaseUrl": "https://example.com",
+    }
+    spec = server._load_spec(spec_cfg)
+    client = httpx.AsyncClient(base_url=spec_cfg["apiBaseUrl"])
+    sub_server = server.FastMCPOpenAPI(openapi_spec=spec, client=client)
+    tools = asyncio.run(sub_server.get_tools())
+    asyncio.run(client.aclose())
+    assert len(tools) == 0
+    assert server._get_prefix(spec_cfg) == "pet"

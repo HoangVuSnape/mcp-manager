@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "swagger": [
         {
-            "file": "examples/swagger-pet-store.json",
+            "path": "examples/swagger-pet-store.json",
             "apiBaseUrl": "https://petstore.swagger.io/v2",
             "prefix": "petstore"
         }
@@ -35,24 +35,24 @@ def _get_prefix(spec_cfg: dict) -> str:
     """Return mount prefix for a swagger spec."""
     if spec_cfg.get("prefix"):
         return spec_cfg["prefix"]
-    if spec_cfg.get("file"):
-        return os.path.splitext(os.path.basename(spec_cfg["file"]))[0]
-    return os.path.splitext(os.path.basename(spec_cfg["url"].split("?")[0]))[0]
+    path = spec_cfg.get("path", "")
+    base = os.path.basename(path.split("?")[0])
+    return os.path.splitext(base)[0]
 
 
 def _load_spec(spec_cfg: dict) -> dict:
-    """Load an OpenAPI specification from file or URL."""
-    if spec_cfg.get("file"):
-        file_path = spec_cfg["file"]
-        if not os.path.isabs(file_path):
-            file_path = os.path.join(os.path.dirname(__file__), file_path)
-        with open(file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    if spec_cfg.get("url"):
-        resp = httpx.get(spec_cfg["url"])
+    """Load an OpenAPI specification from a path (local file or URL)."""
+    path = spec_cfg.get("path")
+    if not path:
+        raise ValueError("Swagger config entry must include 'path'")
+    if path.startswith("http://") or path.startswith("https://"):
+        resp = httpx.get(path)
         resp.raise_for_status()
         return resp.json()
-    raise ValueError("Swagger config entry must include 'file' or 'url'")
+    if not os.path.isabs(path):
+        path = os.path.join(os.path.dirname(__file__), path)
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def load_config(source: str | None = None) -> dict:
     """Load configuration from a local file or remote URL."""
@@ -122,7 +122,7 @@ async def main(config_source: str | None = None) -> None:
         # Mount tools into the shared root server
         root_server.mount(prefix, sub_server)
 
-        # Mount individual SSE app for this swagger file
+        # Mount individual SSE app for this swagger specification
         app.mount(f"/{prefix}", sub_server.sse_app())
 
     logger.info("Loaded %d Swagger servers:", len(server_info))

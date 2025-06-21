@@ -163,6 +163,9 @@ async def main(config_source: str | None = None) -> None:
     server_uvicorn = uvicorn.Server(config)
     await server_uvicorn.serve()
 
+    for client in clients:
+        await client.aclose()
+
 if __name__ == "__main__":
     # Optional config path or URL can be provided as the first argument
     config_arg = sys.argv[1] if len(sys.argv) > 1 else None

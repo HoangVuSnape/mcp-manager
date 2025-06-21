@@ -1,7 +1,7 @@
 {
   "swagger": [
     {
-      "file": "examples/swagger-pet-store.json",
+      "path": "examples/swagger-pet-store.json",
       "apiBaseUrl": "https://petstore.swagger.io/v2",
       "prefix": "petstore"
     }

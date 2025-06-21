@@ -14,9 +14,9 @@ pip install -r requirements.txt  # install dependencies
 python server.py                 # start the server
 ```
 
-By default the server listens on port `3000` and serves SSE connections at `/sse` with messages posted to `/messages`. A simple health check is available at `/health`.
+By default the server listens on port `3000`. Each Swagger file becomes its own MCP server mounted under its configured `prefix`. SSE connections for a spec are available at `/<prefix>/sse` with messages posted to `/<prefix>/messages`. A combined server exposing all tools is also mounted at `/sse` and `/messages`. A simple health check is available at `/health`.
 
-The OpenAPI schemas to load are configured in `config.json`. Multiple specifications can be provided using the `swagger` array. Each entry requires a `file`, `apiBaseUrl` and a unique `prefix` used when mounting the tools.
+The OpenAPI schemas to load are configured in `config.json`. Multiple specifications can be provided using the `swagger` array. Each entry requires a `file`, `apiBaseUrl` and a unique `prefix` used for the mount paths.
 
 Example `config.json`:
 
@@ -36,4 +36,4 @@ Example `config.json`:
 }
 ```
 
-Additional Swagger files can be added to the `swagger` list with different prefixes to combine multiple APIs into one MCP server.
+Additional Swagger files can be added to the `swagger` list with different prefixes to combine multiple APIs into one MCP server. For example, a prefix of `petstore` will expose endpoints at `/petstore/sse` and `/petstore/messages`.

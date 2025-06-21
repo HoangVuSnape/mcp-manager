@@ -3,7 +3,8 @@ import os
 import asyncio
 from fastmcp import FastMCP
 from fastmcp.server.openapi import FastMCPOpenAPI
-from fastmcp.server.http import create_sse_app
+from starlette.applications import Starlette
+from starlette.routing import Mount, Route
 import httpx
 import uvicorn
 from starlette.responses import JSONResponse
@@ -37,6 +38,7 @@ async def main() -> None:
     cfg = load_config(os.path.join(os.path.dirname(__file__), "config.json"))
 
     root_server = FastMCP(name="Swagger MCP Server")
+    app = Starlette()
 
     for spec_cfg in cfg["swagger"]:
         file_path = os.path.join(os.path.dirname(__file__), spec_cfg["file"])
@@ -52,13 +54,21 @@ async def main() -> None:
         )
 
         prefix = spec_cfg.get("prefix") or os.path.splitext(os.path.basename(spec_cfg["file"]))[0]
+
+        # Mount tools into the shared root server
         root_server.mount(prefix, sub_server)
 
-    @root_server.custom_route("/health", methods=["GET"])
+        # Mount individual SSE app for this swagger file
+        app.mount(f"/{prefix}", sub_server.sse_app())
+
     async def health(_: Request):
         return JSONResponse({"status": "ok"})
 
-    app = create_sse_app(server=root_server, message_path="/messages", sse_path="/sse")
+    app.add_route("/health", health, methods=["GET"])
+
+    # Mount shared server at root (after /health route)
+    app.mount("/", root_server.sse_app())
+
     config = uvicorn.Config(app, host=cfg["server"]["host"], port=cfg["server"]["port"])
     server_uvicorn = uvicorn.Server(config)
     await server_uvicorn.serve()

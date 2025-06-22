@@ -20,6 +20,7 @@ from .routes import (
     health,
     make_add_server_handler,
     make_list_servers_handler,
+    make_list_tools_handler,
     make_set_tool_enabled_handler,
     export_server,
     spec_data,
@@ -119,6 +120,11 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
     app.add_api_route(
         "/list-server",
         make_list_servers_handler(server_info),
+        methods=["GET"],
+    )
+    app.add_api_route(
+        "/list-tools",
+        make_list_tools_handler(root_server),
         methods=["GET"],
     )
     app.add_api_route(

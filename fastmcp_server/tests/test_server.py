@@ -191,3 +191,31 @@ def test_tool_enable_api():
             return [s for s in statuses if s.name == tool_name][0].enabled
 
     assert asyncio.run(check_db()) is False
+
+
+def test_list_tools_endpoint():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+
+    app = asyncio.run(server.create_app(cfg))
+    prefix = cfg["swagger"][0]["prefix"]
+
+    async def call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(f"/list-tools?prefix={prefix}")
+
+    resp = asyncio.run(call())
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data.get("tools"), list)
+    assert data["tools"]
+
+    async def call_all() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/list-tools")
+
+    resp_all = asyncio.run(call_all())
+    assert resp_all.status_code == 200
+    assert len(resp_all.json()["tools"]) >= len(data["tools"])

@@ -6,8 +6,7 @@ import os
 import sys
 from functools import partial
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastmcp.server.openapi import FastMCPOpenAPI
 import httpx
@@ -15,16 +14,7 @@ import uvicorn
 
 from . import db
 
-from .routes import (
-    close_clients,
-    health,
-    make_add_server_handler,
-    make_list_servers_handler,
-    make_list_tools_handler,
-    make_set_tool_enabled_handler,
-    export_server,
-    spec_data,
-)
+from . import routes, models
 
 from .utils.config_utils import DEFAULT_CONFIG, export_config, load_config
 from .utils.db_utils import (
@@ -74,7 +64,7 @@ async def load_specs(
         )
 
         prefix = _get_prefix(spec_cfg)
-        spec_data[prefix] = spec
+        routes.spec_data[prefix] = spec
 
         tool_count = len(await sub_server.get_tools())
         server_info.append((prefix, tool_count))
@@ -116,20 +106,27 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to count tools: %s", exc)
 
-    app.add_api_route("/health", health, methods=["GET"])
+    app.add_api_route(
+        "/health",
+        routes.health,
+        methods=["GET"],
+        response_model=models.HealthResponse,
+    )
     app.add_api_route(
         "/list-server",
-        make_list_servers_handler(server_info),
+        routes.make_list_servers_handler(server_info),
         methods=["GET"],
+        response_model=models.ListServersResponse,
     )
     app.add_api_route(
         "/list-tools",
-        make_list_tools_handler(root_server),
+        routes.make_list_tools_handler(root_server),
         methods=["GET"],
+        response_model=models.ListToolsResponse,
     )
     app.add_api_route(
         "/add-server",
-        make_add_server_handler(
+        routes.make_add_server_handler(
             root_server,
             app,
             server_info,
@@ -138,14 +135,20 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
             session_maker,
         ),
         methods=["POST"],
+        response_model=models.AddServerResponse,
     )
     app.add_api_route(
-        "/export-server/{prefix}", export_server, methods=["GET"], name="export"
+        "/export-server/{prefix}",
+        routes.export_server,
+        methods=["GET"],
+        name="export",
+        response_model=dict,
     )
     app.add_api_route(
         "/tool-enabled",
-        make_set_tool_enabled_handler(root_server, session_maker),
+        routes.make_set_tool_enabled_handler(root_server, session_maker),
         methods=["POST"],
+        response_model=models.ToolEnabledResponse,
     )
 
     # Mount shared server at root (after /health route)
@@ -153,7 +156,7 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
 
     app.add_event_handler(
         "shutdown",
-        partial(close_clients, clients=clients, session_maker=session_maker),
+        partial(routes.close_clients, clients=clients, session_maker=session_maker),
     )
     return app
 

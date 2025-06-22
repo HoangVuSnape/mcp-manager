@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import httpx
 import uvicorn
+from . import db
 
 from utils.config_utils import DEFAULT_CONFIG, export_config, load_config
 # from utils import db_utils
@@ -22,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def create_app(cfg: dict) -> FastAPI:
+async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
     """Build and return the FastAPI application for the given config."""
     root_server = FastMCP(name="Swagger MCP Server")
     app = FastAPI()
@@ -46,6 +47,7 @@ async def create_app(cfg: dict) -> FastAPI:
             client=client,
             name=f"{spec_cfg.get('prefix', 'api')} server",
         )
+        spec_data[_get_prefix(spec_cfg)] = spec
 
         tool_count = len(await sub_server.get_tools())
 
@@ -74,8 +76,54 @@ async def create_app(cfg: dict) -> FastAPI:
     async def list_servers(_: Request):
         return JSONResponse({"servers": [p for p, _ in server_info]})
 
+    async def add_server(request: Request):
+        """Dynamically mount a new Swagger specification."""
+        spec_cfg = await request.json()
+        prefix = _get_prefix(spec_cfg)
+
+        if any(p == prefix for p, _ in server_info):
+            return JSONResponse({"error": "prefix already exists"}, status_code=400)
+
+        try:
+            spec = _load_spec(spec_cfg)
+        except (httpx.HTTPError, ValueError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+        client = httpx.AsyncClient(base_url=spec_cfg["apiBaseUrl"])
+        sub_server = FastMCPOpenAPI(
+            openapi_spec=spec,
+            client=client,
+            name=f"{spec_cfg.get('prefix', 'api')} server",
+        )
+        spec_data[prefix] = spec
+        spec_configs[prefix] = spec_cfg
+
+        tool_count = len(await sub_server.get_tools())
+
+        root_server.mount(prefix, sub_server)
+        app.mount(f"/{prefix}", sub_server.sse_app())
+
+        server_info.append((prefix, tool_count))
+        clients.append(client)
+        cfg.setdefault("swagger", []).append(spec_cfg)
+
+        async with app.state.db_session() as session:
+            await db.add_spec(session, spec_cfg)
+
+        return JSONResponse({"added": prefix, "tools": tool_count})
+
+    async def export_server(prefix: str, _: Request) -> JSONResponse:
+        """Return the stored OpenAPI specification for a prefix."""
+        if prefix not in spec_data:
+            return JSONResponse({"error": "prefix not found"}, status_code=404)
+        return JSONResponse(spec_data[prefix])
+
     app.add_api_route("/health", health, methods=["GET"])
     app.add_api_route("/list-server", list_servers, methods=["GET"])
+    app.add_api_route("/add-server", add_server, methods=["POST"])
+    app.add_api_route(
+        "/export-server/{prefix}", export_server, methods=["GET"], name="export"
+    )
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())
@@ -83,6 +131,7 @@ async def create_app(cfg: dict) -> FastAPI:
     async def close_clients() -> None:
         for client in clients:
             await client.aclose()
+        await session_maker.bind.dispose()
 
     app.add_event_handler("shutdown", close_clients)
     return app

@@ -79,6 +79,7 @@ def test_get_prefix_from_url(monkeypatch):
 
 def test_list_server_endpoint():
     cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
 
     app = asyncio.run(server.create_app(cfg))
 

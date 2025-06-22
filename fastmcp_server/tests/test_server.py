@@ -151,3 +151,43 @@ def test_save_and_load_config_postgres(monkeypatch):
     server.save_config_to_postgres(cfg, "db")
     loaded = server.load_config_from_postgres("db")
     assert loaded["server"]["port"] == 5
+
+
+def test_tool_enable_api():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+
+    app = asyncio.run(server.create_app(cfg))
+    prefix = cfg["swagger"][0]["prefix"]
+
+    async def get_first_tool() -> str:
+        srv = app.state.root_server._mounted_servers[prefix]
+        tools = await srv.get_tools()
+        return next(iter(tools))
+
+    tool_name = asyncio.run(get_first_tool())
+
+    async def disable() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.post(
+                "/tool-enabled",
+                json={"prefix": prefix, "name": tool_name, "enabled": False},
+            )
+
+    resp = asyncio.run(disable())
+    assert resp.status_code == 200
+
+    async def check_tool() -> bool:
+        srv = app.state.root_server._mounted_servers[prefix]
+        tools = await srv.get_tools()
+        return tools[tool_name].enabled
+
+    assert asyncio.run(check_tool()) is False
+
+    async def check_db() -> bool:
+        async with app.state.db_session() as session:
+            statuses = await server.db.get_tool_statuses(session, prefix)
+            return [s for s in statuses if s.name == tool_name][0].enabled
+
+    assert asyncio.run(check_db()) is False

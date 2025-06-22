@@ -102,3 +102,32 @@ variable) to a SQLAlchemy connection URL for a PostgreSQL database.
 Registered Swagger specs are stored in this database when added via
 `/add-server` and reloaded automatically on startup so no information is
 lost across restarts.
+
+### Disabling tools
+
+Individual tools can be enabled or disabled at runtime via the `/tool-enabled`
+endpoint. Send a POST request with a JSON body containing the tool `name`, the
+server `prefix` and the desired `enabled` state:
+
+```bash
+curl -X POST http://localhost:3000/tool-enabled \
+  -H "Content-Type: application/json" \
+  -d '{"prefix": "petstore", "name": "findPetsByStatus", "enabled": false}'
+```
+
+The state is persisted in the database so disabled tools remain disabled across
+server restarts.
+
+Tools can also be disabled programmatically using the FastMCP API:
+
+```python
+from fastmcp import FastMCP
+
+server = FastMCP(name="example")
+
+@server.tool
+def dynamic():
+    return "hi"
+
+dynamic.disable()  # re-enable later with dynamic.enable()
+```

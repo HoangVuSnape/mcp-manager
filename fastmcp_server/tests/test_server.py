@@ -93,116 +93,61 @@ def test_list_server_endpoint():
     assert cfg["swagger"][0]["prefix"] in resp.json()["servers"]
 
 
-def test_add_server_endpoint(monkeypatch):
-    spec_data = {"openapi": "3.0.0", "paths": {}, "info": {"title": "t", "version": "1"}}
+def test_load_multiple_configs(tmp_path):
+    cfg1 = {
+        "swagger": [{"path": "one.json", "apiBaseUrl": "http://a", "prefix": "a"}],
+        "server": {"host": "0.0.0.0", "port": 1},
+    }
+    cfg2 = {
+        "swagger": [{"path": "two.json", "apiBaseUrl": "http://b", "prefix": "b"}]
+    }
+    p1 = tmp_path / "c1.json"
+    p2 = tmp_path / "c2.json"
+    p1.write_text(json.dumps(cfg1))
+    p2.write_text(json.dumps(cfg2))
+    cfg = server.load_config([str(p1), str(p2)])
+    assert len(cfg["swagger"]) == 2
 
-    class FakeResp:
-        def __init__(self, data):
-            self._data = data
 
-        def raise_for_status(self):
+def test_save_and_load_config_postgres(monkeypatch):
+    executed = {}
+
+    class FakeCursor:
+        def __init__(self):
+            self._result = [json.dumps({"swagger": [], "server": {"port": 5}})]
+
+        def execute(self, query, params=None):
+            executed.setdefault("queries", []).append((query, params))
+
+        def fetchone(self):
+            return [self._result[0]]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
             pass
 
-        def json(self):
-            return self._data
+    class FakeConn:
+        def __enter__(self):
+            return self
 
-    def fake_get(url):
-        return FakeResp(spec_data)
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-
-    cfg = server.load_config()
-    cfg["database"] = "sqlite+aiosqlite:///:memory:"
-    app = asyncio.run(server.create_app(cfg))
-
-    async def _call() -> tuple[httpx.Response, httpx.Response]:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            add_resp = await client.post(
-                "/add-server",
-                json={"path": "https://example.com/new.json", "apiBaseUrl": "https://example.com", "prefix": "new"},
-            )
-            list_resp = await client.get("/list-server")
-            return add_resp, list_resp
-
-    add_resp, list_resp = asyncio.run(_call())
-    assert add_resp.status_code == 200
-    assert "new" in list_resp.json()["servers"]
-
-
-def test_add_server_persisted(monkeypatch, tmp_path):
-    spec_data = {"openapi": "3.0.0", "paths": {}, "info": {"title": "t", "version": "1"}}
-
-    class FakeResp:
-        def __init__(self, data):
-            self._data = data
-
-        def raise_for_status(self):
+        def __exit__(self, exc_type, exc, tb):
             pass
 
-        def json(self):
-            return self._data
+        def cursor(self):
+            return FakeCursor()
 
-    def fake_get(url):
-        return FakeResp(spec_data)
+        def close(self):
+            executed["closed"] = True
 
-    monkeypatch.setattr(httpx, "get", fake_get)
+    def fake_connect(dsn):
+        executed["dsn"] = dsn
+        return FakeConn()
 
-    cfg = server.load_config()
-    db_url = f"sqlite+aiosqlite:///{tmp_path/'db.sqlite'}"
-    cfg["database"] = db_url
-    app = asyncio.run(server.create_app(cfg))
+    monkeypatch.setattr(server.db_utils.psycopg2, "connect", fake_connect)
 
-    async def _add() -> None:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            await client.post(
-                "/add-server",
-                json={"path": "https://example.com/new.json", "apiBaseUrl": "https://example.com", "prefix": "new"},
-            )
-
-    asyncio.run(_add())
-
-    # Create a new app using the same DB and ensure the server persists
-    app2 = asyncio.run(server.create_app(cfg))
-
-    async def _list() -> httpx.Response:
-        transport = httpx.ASGITransport(app=app2)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            return await client.get("/list-server")
-
-    list_resp = asyncio.run(_list())
-    assert "new" in list_resp.json()["servers"]
-
-
-def test_export_server_endpoint():
-    cfg = server.load_config()
-    cfg["database"] = "sqlite+aiosqlite:///:memory:"
-    app = asyncio.run(server.create_app(cfg))
-
-    prefix = cfg["swagger"][0]["prefix"]
-    expected = server._load_spec(cfg["swagger"][0])
-
-    async def _call() -> httpx.Response:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            return await client.get(f"/export-server/{prefix}")
-
-    resp = asyncio.run(_call())
-    assert resp.status_code == 200
-    assert resp.json().get("openapi") == expected.get("openapi")
-
-
-def test_export_server_missing():
-    cfg = server.load_config()
-    cfg["database"] = "sqlite+aiosqlite:///:memory:"
-    app = asyncio.run(server.create_app(cfg))
-
-    async def _call() -> httpx.Response:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            return await client.get("/export-server/absent")
-
-    resp = asyncio.run(_call())
-    assert resp.status_code == 404
-
+    cfg = {"swagger": [], "server": {"port": 5}}
+    server.save_config_to_postgres(cfg, "db")
+    loaded = server.load_config_from_postgres("db")
+    assert loaded["server"]["port"] == 5

@@ -3,3 +3,6 @@ fastapi
 uvicorn
 pytest
 pytest-httpx
+SQLAlchemy>=2.0
+asyncpg
+aiosqlite

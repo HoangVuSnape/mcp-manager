@@ -56,8 +56,25 @@ Example `config.json`:
   "server": {
     "host": "0.0.0.0",
     "port": 3000
-  }
+  },
+  "database": "postgresql+asyncpg://user:pass@host/dbname"
 }
 ```
 
 Additional Swagger specifications can be added to the `swagger` list with different prefixes to combine multiple APIs into one MCP server. For example, a prefix of `petstore` will expose endpoints at `/petstore/sse` and `/petstore/messages`.
+
+### Adding specs at runtime
+
+Running servers can register new Swagger specifications by POSTing a JSON
+payload to the `/add-server` endpoint. The body should contain the same
+fields used in `config.json` (`path`, `apiBaseUrl` and optional `prefix`).
+The new API will immediately be mounted under its prefix and listed by
+`/list-server`.
+
+### Database persistence
+
+Set the `database` field in `config.json` (or the `DB_URL` environment
+variable) to a SQLAlchemy connection URL for a PostgreSQL database.
+Registered Swagger specs are stored in this database when added via
+`/add-server` and reloaded automatically on startup so no information is
+lost across restarts.

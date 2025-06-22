@@ -47,3 +47,30 @@ class ToolEnabledResponse(BaseModel):
 
     tool: str
     enabled: bool
+
+
+class SearchEnabledRequest(BaseModel):
+    """Request body for enabling/disabling search for a server."""
+
+    prefix: str
+    enabled: bool = False
+
+
+class SearchEnabledResponse(BaseModel):
+    """Response for search-enabled state."""
+
+    prefix: str
+    enabled: bool
+
+
+class SearchResult(BaseModel):
+    """Single search result containing prefix and tool name."""
+
+    prefix: str
+    tool: str
+
+
+class SearchResponse(BaseModel):
+    """Response model for search endpoint."""
+
+    results: list[SearchResult]

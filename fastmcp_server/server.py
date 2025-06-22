@@ -7,9 +7,8 @@ import os
 import sys
 from fastmcp import FastMCP
 from fastmcp.server.openapi import FastMCPOpenAPI
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 import httpx
 import uvicorn
 
@@ -81,10 +80,10 @@ def load_config(source: str | None = None) -> dict:
     return cfg
 
 
-async def create_app(cfg: dict) -> Starlette:
-    """Build and return the Starlette application for the given config."""
+async def create_app(cfg: dict) -> FastAPI:
+    """Build and return the FastAPI application for the given config."""
     root_server = FastMCP(name="Swagger MCP Server")
-    app = Starlette()
+    app = FastAPI()
 
     server_info: list[tuple[str, int]] = []
     clients: list[httpx.AsyncClient] = []
@@ -132,8 +131,8 @@ async def create_app(cfg: dict) -> Starlette:
     async def list_servers(_: Request):
         return JSONResponse({"servers": [p for p, _ in server_info]})
 
-    app.add_route("/health", health, methods=["GET"])
-    app.add_route("/list-server", list_servers, methods=["GET"])
+    app.add_api_route("/health", health, methods=["GET"])
+    app.add_api_route("/list-server", list_servers, methods=["GET"])
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())

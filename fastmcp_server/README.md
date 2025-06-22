@@ -6,6 +6,7 @@ This example demonstrates how to expose one or more OpenAPI specifications throu
 
 - Python 3.12
 - `fastmcp` package (`pip install fastmcp`)
+- `fastapi` package (`pip install fastapi`)
 
 ## Usage
 

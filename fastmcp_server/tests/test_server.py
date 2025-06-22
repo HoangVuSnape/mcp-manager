@@ -236,3 +236,28 @@ def test_search_enabled_endpoint():
     resp = asyncio.run(toggle())
     assert resp.status_code == 200
     assert resp.json()["enabled"] is False
+
+
+def test_search_endpoint():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+
+    app = asyncio.run(server.create_app(cfg))
+    prefix = cfg["swagger"][0]["prefix"]
+
+    async def first_tool() -> str:
+        srv = app.state.root_server._mounted_servers[prefix]
+        tools = await srv.get_tools()
+        return next(iter(tools))
+
+    tool_name = asyncio.run(first_tool())
+
+    async def search_call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(f"/search?prefix={prefix}&name={tool_name}")
+
+    resp = asyncio.run(search_call())
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(r["tool"] == tool_name for r in data.get("results", []))

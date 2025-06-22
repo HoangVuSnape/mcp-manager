@@ -171,3 +171,32 @@ def make_set_search_enabled_handler():
 
     return set_search_enabled
 
+
+def make_search_handler(root_server: FastMCP):
+    async def search(request: Request) -> models.SearchResponse:
+        """Search tools with optional filters."""
+        prefix = request.query_params.get("prefix")
+        name_filter = request.query_params.get("name")
+        enabled_param = request.query_params.get("enabled")
+        enabled_filter: bool | None = None
+        if enabled_param is not None:
+            enabled_filter = enabled_param.lower() in {"1", "true", "yes"}
+
+        prefixes = [prefix] if prefix else list(root_server._mounted_servers.keys())
+        results: list[models.SearchResult] = []
+        for pre in prefixes:
+            server = root_server._mounted_servers.get(pre)
+            if server is None:
+                raise HTTPException(status_code=404, detail="prefix not found")
+            if enabled_filter is not None and search_status.get(pre, True) != enabled_filter:
+                continue
+            tools = await server.get_tools()
+            for tool_name in tools:
+                if name_filter and name_filter.lower() not in tool_name.lower():
+                    continue
+                results.append(models.SearchResult(prefix=pre, tool=tool_name))
+
+        return models.SearchResponse(results=results)
+
+    return search
+

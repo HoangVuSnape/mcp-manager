@@ -61,3 +61,16 @@ class SearchEnabledResponse(BaseModel):
 
     prefix: str
     enabled: bool
+
+
+class SearchResult(BaseModel):
+    """Single search result containing prefix and tool name."""
+
+    prefix: str
+    tool: str
+
+
+class SearchResponse(BaseModel):
+    """Response model for search endpoint."""
+
+    results: list[SearchResult]

@@ -52,6 +52,26 @@ def set_search_enabled(prefix: str, enabled: bool) -> str:
     except Exception as exc:
         return f"Error: {exc}"
 
+def search_tools(prefix: str, name: str, status: str) -> str:
+    params = {}
+    if prefix:
+        params["prefix"] = prefix
+    if name:
+        params["name"] = name
+    if status == "Enabled":
+        params["enabled"] = "true"
+    elif status == "Disabled":
+        params["enabled"] = "false"
+    try:
+        resp = client.get(f"{API_URL}/search", params=params)
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        if not results:
+            return "No results"
+        return "\n".join(f"{r['prefix']}: {r['tool']}" for r in results)
+    except Exception as exc:
+        return f"Error: {exc}"
+
 with gr.Blocks(title="MCP Server Dashboard") as demo:
     with gr.Tab("Add Server"):
         path_in = gr.Textbox(label="Spec Path or URL")
@@ -73,7 +93,7 @@ with gr.Blocks(title="MCP Server Dashboard") as demo:
         server_drop.change(lambda p: gr.update(choices=list_tools(p)), server_drop, tool_drop)
         set_btn.click(set_tool_enabled, inputs=[server_drop, tool_drop, enabled_chk], outputs=result_box)
 
-    with gr.Tab("Search"):
+    with gr.Tab("Search Toggle"):
         search_server = gr.Dropdown(choices=list_servers(), label="Server")
         search_chk = gr.Checkbox(label="Search Enabled", value=True)
         search_btn = gr.Button("Set")
@@ -82,6 +102,17 @@ with gr.Blocks(title="MCP Server Dashboard") as demo:
 
         search_btn.click(set_search_enabled, inputs=[search_server, search_chk], outputs=search_out)
         search_refresh.click(lambda: gr.update(choices=list_servers()), None, search_server)
+
+    with gr.Tab("Search Tools"):
+        filter_server = gr.Dropdown(choices=list_servers(), label="Server")
+        name_in = gr.Textbox(label="Name Contains")
+        status_drop = gr.Dropdown(choices=["All", "Enabled", "Disabled"], value="All", label="Search Status")
+        find_btn = gr.Button("Search")
+        result_box2 = gr.Textbox(label="Results")
+        search_refresh2 = gr.Button("Refresh Servers")
+
+        find_btn.click(search_tools, inputs=[filter_server, name_in, status_drop], outputs=result_box2)
+        search_refresh2.click(lambda: gr.update(choices=list_servers()), None, filter_server)
 
 if __name__ == "__main__":
     demo.launch()

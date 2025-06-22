@@ -173,3 +173,36 @@ def test_add_server_persisted(monkeypatch, tmp_path):
 
     list_resp = asyncio.run(_list())
     assert "new" in list_resp.json()["servers"]
+
+
+def test_export_server_endpoint():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+    app = asyncio.run(server.create_app(cfg))
+
+    prefix = cfg["swagger"][0]["prefix"]
+    expected = server._load_spec(cfg["swagger"][0])
+
+    async def _call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(f"/export-server/{prefix}")
+
+    resp = asyncio.run(_call())
+    assert resp.status_code == 200
+    assert resp.json().get("openapi") == expected.get("openapi")
+
+
+def test_export_server_missing():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+    app = asyncio.run(server.create_app(cfg))
+
+    async def _call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/export-server/absent")
+
+    resp = asyncio.run(_call())
+    assert resp.status_code == 404
+

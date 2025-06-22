@@ -71,6 +71,12 @@ fields used in `config.json` (`path`, `apiBaseUrl` and optional `prefix`).
 The new API will immediately be mounted under its prefix and listed by
 `/list-server`.
 
+### Exporting Swagger specs
+
+The raw OpenAPI schema for any loaded server can be downloaded via
+`/export-server/{prefix}`. If the prefix is unknown a `404` response is
+returned.
+
 ### Database persistence
 
 Set the `database` field in `config.json` (or the `DB_URL` environment

@@ -96,6 +96,8 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
 
     server_info: list[tuple[str, int]] = []
     clients: list[httpx.AsyncClient] = []
+    spec_configs: dict[str, dict] = {}
+    spec_data: dict[str, dict] = {}
 
     db_url = db_url or cfg.get("database")
     session_maker = await db.init_db(db_url)
@@ -117,6 +119,8 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
                 specs.append(stored)
 
     cfg["swagger"] = specs
+    for spec_cfg in specs:
+        spec_configs[_get_prefix(spec_cfg)] = spec_cfg
 
     for spec_cfg in specs:
         try:
@@ -133,6 +137,7 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
             client=client,
             name=f"{spec_cfg.get('prefix', 'api')} server",
         )
+        spec_data[_get_prefix(spec_cfg)] = spec
 
         tool_count = len(await sub_server.get_tools())
 
@@ -180,6 +185,8 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
             client=client,
             name=f"{spec_cfg.get('prefix', 'api')} server",
         )
+        spec_data[prefix] = spec
+        spec_configs[prefix] = spec_cfg
 
         tool_count = len(await sub_server.get_tools())
 
@@ -195,9 +202,18 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
 
         return JSONResponse({"added": prefix, "tools": tool_count})
 
+    async def export_server(prefix: str, _: Request) -> JSONResponse:
+        """Return the stored OpenAPI specification for a prefix."""
+        if prefix not in spec_data:
+            return JSONResponse({"error": "prefix not found"}, status_code=404)
+        return JSONResponse(spec_data[prefix])
+
     app.add_api_route("/health", health, methods=["GET"])
     app.add_api_route("/list-server", list_servers, methods=["GET"])
     app.add_api_route("/add-server", add_server, methods=["POST"])
+    app.add_api_route(
+        "/export-server/{prefix}", export_server, methods=["GET"], name="export"
+    )
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())

@@ -34,6 +34,16 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
     root_server = FastMCP(name="Swagger MCP Server")
     app = FastAPI()
 
+    # Initialise database connection if provided
+    db_url = db_url or cfg.get("database")
+    session_maker = None
+    if db_url:
+        session_maker = await db.init_db(db_url)
+    if session_maker is None:
+        session_maker = await db.init_db("sqlite+aiosqlite:///:memory:")
+    app.state.db_session = session_maker
+    app.state.root_server = root_server
+
     server_info: list[tuple[str, int]] = []
     clients: list[httpx.AsyncClient] = []
 
@@ -66,6 +76,16 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
 
         # Mount individual SSE app for this swagger specification
         app.mount(f"/{prefix}", sub_server.sse_app())
+
+        # Apply stored tool enable states
+        async with session_maker() as session:
+            for ts in await db.get_tool_statuses(session, prefix):
+                tools = await sub_server.get_tools()
+                if ts.name in tools:
+                    if ts.enabled:
+                        tools[ts.name].enable()
+                    else:
+                        tools[ts.name].disable()
 
     logger.info("Loaded %d Swagger servers:", len(server_info))
     for prefix, count in server_info:
@@ -124,12 +144,36 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
             return JSONResponse({"error": "prefix not found"}, status_code=404)
         return JSONResponse(spec_data[prefix])
 
+    async def set_tool_enabled(request: Request) -> JSONResponse:
+        """Enable or disable a specific tool by prefix and name."""
+        data = await request.json()
+        prefix = data.get("prefix")
+        name = data.get("name")
+        enabled = data.get("enabled", False)
+        if not prefix or not name:
+            return JSONResponse({"error": "prefix and name required"}, status_code=400)
+        server = root_server._mounted_servers.get(prefix)
+        if server is None:
+            return JSONResponse({"error": "prefix not found"}, status_code=404)
+        tools = await server.get_tools()
+        if name not in tools:
+            return JSONResponse({"error": "tool not found"}, status_code=404)
+        tool = tools[name]
+        if enabled:
+            tool.enable()
+        else:
+            tool.disable()
+        async with app.state.db_session() as session:
+            await db.set_tool_enabled(session, prefix, name, bool(enabled))
+        return JSONResponse({"tool": name, "enabled": bool(enabled)})
+
     app.add_api_route("/health", health, methods=["GET"])
     app.add_api_route("/list-server", list_servers, methods=["GET"])
     app.add_api_route("/add-server", add_server, methods=["POST"])
     app.add_api_route(
         "/export-server/{prefix}", export_server, methods=["GET"], name="export"
     )
+    app.add_api_route("/tool-enabled", set_tool_enabled, methods=["POST"])
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())

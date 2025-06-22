@@ -42,7 +42,7 @@ docker compose up --build
 The default configuration is loaded from `fastmcp_server/config.json` and
 stored in the `db` service. The server is available on `http://localhost:3000`.
 
-By default the server listens on port `3000`. Each Swagger specification becomes its own MCP server mounted under its configured `prefix`. SSE connections for a spec are available at `/<prefix>/sse` with messages posted to `/<prefix>/messages`. A combined server exposing all tools is also mounted at `/sse` and `/messages`. A simple health check is available at `/health` and the list of available prefixes can be retrieved from `/list-server`.
+By default the server listens on port `3000`. Each Swagger specification becomes its own MCP server mounted under its configured `prefix`. SSE connections for a spec are available at `/<prefix>/sse` with messages posted to `/<prefix>/messages`. A combined server exposing all tools is also mounted at `/sse` and `/messages`. A simple health check is available at `/health`, the list of prefixes can be retrieved from `/list-server`, and the tools of a server can be listed via `/list-tools` (use the optional `prefix` query parameter to limit the results).
 
 When the server starts it prints a short summary of how many tools were loaded for each Swagger specification and the total number of tools across all specs:
 
@@ -87,7 +87,7 @@ Running servers can register new Swagger specifications by POSTing a JSON
 payload to the `/add-server` endpoint. The body should contain the same
 fields used in `config.json` (`path`, `apiBaseUrl` and optional `prefix`).
 The new API will immediately be mounted under its prefix and listed by
-`/list-server`.
+`/list-server`. Tools for a specific API can be retrieved from `/list-tools?prefix=<prefix>`.
 
 ### Exporting Swagger specs
 
@@ -101,7 +101,9 @@ Set the `database` field in `config.json` (or the `DB_URL` environment
 variable) to a SQLAlchemy connection URL for a PostgreSQL database.
 Registered Swagger specs are stored in this database when added via
 `/add-server` and reloaded automatically on startup so no information is
-lost across restarts.
+lost across restarts. The server will retry connecting to the database for a
+short time on startup which helps when running with Docker where the database
+service might need a few seconds to become available.
 
 ### Disabling tools
 

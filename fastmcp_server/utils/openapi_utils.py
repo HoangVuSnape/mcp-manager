@@ -22,6 +22,7 @@ def _get_prefix(spec_cfg: dict) -> str:
 def _load_spec(spec_cfg: dict) -> dict:
     """Load an OpenAPI specification from a path (local file or URL)."""
     path = spec_cfg.get("path")
+    logger.info("Loading OpenAPI spec from: %s", path)
     if not path:
         raise ValueError("Swagger config entry must include 'path'")
     if path.startswith("http://") or path.startswith("https://"):
@@ -29,6 +30,7 @@ def _load_spec(spec_cfg: dict) -> dict:
         resp.raise_for_status()
         return resp.json()
     if not os.path.isabs(path):
-        path = os.path.join(os.path.dirname(__file__), path)
+        path = os.path.join(os.path.dirname(__file__), "../"+path)
+    logger.info("Loading OpenAPI spec from local file: %s", path)
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)

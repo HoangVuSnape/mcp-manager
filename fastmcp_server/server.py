@@ -12,10 +12,12 @@ from starlette.responses import JSONResponse
 import httpx
 import uvicorn
 
-from .config_utils import DEFAULT_CONFIG, export_config, load_config
-from . import db_utils
-from .db_utils import load_config_from_postgres, save_config_to_postgres
-from .openapi_utils import _get_prefix, _load_spec
+from utils.config_utils import DEFAULT_CONFIG, export_config, load_config
+# from utils import db_utils
+from utils.db_utils import load_config_from_postgres, save_config_to_postgres
+from utils.openapi_utils import _get_prefix, _load_spec
+
+from utils import *
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ async def create_app(cfg: dict) -> Starlette:
     clients: list[httpx.AsyncClient] = []
 
     for spec_cfg in cfg["swagger"]:
+        logger.info("Loading Swagger spec: %s", spec_cfg.get("path", "unknown"))
         try:
             spec = _load_spec(spec_cfg)
         except (httpx.HTTPError, ValueError) as exc:

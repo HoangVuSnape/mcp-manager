@@ -12,15 +12,21 @@ import httpx
 import uvicorn
 from . import db
 
-from utils.config_utils import DEFAULT_CONFIG, export_config, load_config
-# from utils import db_utils
-from utils.db_utils import load_config_from_postgres, save_config_to_postgres
-from utils.openapi_utils import _get_prefix, _load_spec
-
-from utils import *
+from .utils.config_utils import DEFAULT_CONFIG, export_config, load_config
+from .utils.db_utils import (
+    load_config_from_postgres,
+    save_config_to_postgres,
+)
+from .utils.openapi_utils import _get_prefix, _load_spec
+from .utils import db_utils  # expose db_utils for tests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Runtime storage for loaded OpenAPI specs and their configs
+spec_data: dict[str, dict] = {}
+spec_configs: dict[str, dict] = {}
+
 
 
 async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:

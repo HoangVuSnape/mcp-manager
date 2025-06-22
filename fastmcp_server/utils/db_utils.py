@@ -32,6 +32,9 @@ def load_config_from_postgres(dsn: str, name: str = "default") -> dict | None:
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS configs (name TEXT PRIMARY KEY, data JSONB)"
+            )
             cur.execute("SELECT data FROM configs WHERE name=%s", (name,))
             row = cur.fetchone()
             if row:

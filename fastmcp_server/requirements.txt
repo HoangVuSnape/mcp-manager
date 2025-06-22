@@ -2,3 +2,4 @@ fastmcp
 uvicorn
 pytest
 pytest-httpx
+psycopg2-binary

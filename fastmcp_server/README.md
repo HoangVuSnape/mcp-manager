@@ -23,6 +23,24 @@ pytest
 Alternatively set the `CONFIG_URL` environment variable to a file path or URL
 before running the server.
 
+Multiple config files can be provided by separating paths with commas or by
+setting the `EXTRA_CONFIGS` environment variable. Set `DB_URL` to a PostgreSQL
+connection string to store or retrieve the loaded configuration. The current
+configuration can be written to disk by setting the `EXPORT_CONFIG` environment
+variable to a file path.
+
+### Docker Compose
+
+The repository includes a `docker-compose.yml` that starts the server
+alongside a PostgreSQL instance. Build and run the services with:
+
+```bash
+docker compose up --build
+```
+
+The default configuration is loaded from `fastmcp_server/config.json` and
+stored in the `db` service. The server is available on `http://localhost:3000`.
+
 By default the server listens on port `3000`. Each Swagger specification becomes its own MCP server mounted under its configured `prefix`. SSE connections for a spec are available at `/<prefix>/sse` with messages posted to `/<prefix>/messages`. A combined server exposing all tools is also mounted at `/sse` and `/messages`. A simple health check is available at `/health` and the list of available prefixes can be retrieved from `/list-server`.
 
 When the server starts it prints a short summary of how many tools were loaded for each Swagger specification and the total number of tools across all specs:

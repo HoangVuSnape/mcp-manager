@@ -12,6 +12,7 @@ from .utils.openapi_utils import _get_prefix, _load_spec
 # Runtime storage for loaded OpenAPI specs and their configs
 spec_data: dict[str, dict] = {}
 spec_configs: dict[str, dict] = {}
+search_status: dict[str, bool] = {}
 
 
 HealthResponse = models.HealthResponse
@@ -157,4 +158,16 @@ def make_set_tool_enabled_handler(
         return ToolEnabledResponse(tool=name, enabled=bool(enabled))
 
     return set_tool_enabled
+
+
+def make_set_search_enabled_handler():
+    async def set_search_enabled(data: models.SearchEnabledRequest) -> models.SearchEnabledResponse:
+        """Enable or disable search for a server."""
+        prefix = data.prefix
+        if prefix not in spec_data:
+            raise HTTPException(status_code=404, detail="prefix not found")
+        search_status[prefix] = bool(data.enabled)
+        return models.SearchEnabledResponse(prefix=prefix, enabled=bool(data.enabled))
+
+    return set_search_enabled
 

@@ -1,7 +1,6 @@
 """FastMCP server exposing OpenAPI specs as MCP tools."""
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -13,72 +12,15 @@ from starlette.responses import JSONResponse
 import httpx
 import uvicorn
 
+from utils.config_utils import DEFAULT_CONFIG, export_config, load_config
+# from utils import db_utils
+from utils.db_utils import load_config_from_postgres, save_config_to_postgres
+from utils.openapi_utils import _get_prefix, _load_spec
+
+from utils import *
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-DEFAULT_CONFIG = {
-    "swagger": [
-        {
-            "path": "examples/swagger-pet-store.json",
-            "apiBaseUrl": "https://petstore.swagger.io/v2",
-            "prefix": "petstore"
-        }
-    ],
-    "server": {
-        "host": "0.0.0.0",
-        "port": 3000
-    }
-}
-
-
-def _get_prefix(spec_cfg: dict) -> str:
-    """Return mount prefix for a swagger spec."""
-    if spec_cfg.get("prefix"):
-        return spec_cfg["prefix"]
-    path = spec_cfg.get("path", "")
-    base = os.path.basename(path.split("?")[0])
-    return os.path.splitext(base)[0]
-
-
-def _load_spec(spec_cfg: dict) -> dict:
-    """Load an OpenAPI specification from a path (local file or URL)."""
-    path = spec_cfg.get("path")
-    if not path:
-        raise ValueError("Swagger config entry must include 'path'")
-    if path.startswith("http://") or path.startswith("https://"):
-        resp = httpx.get(path)
-        resp.raise_for_status()
-        return resp.json()
-    if not os.path.isabs(path):
-        path = os.path.join(os.path.dirname(__file__), path)
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def load_config(source: str | None = None) -> dict:
-    """Load configuration from a local file or remote URL."""
-    if source is None:
-        source = os.environ.get("CONFIG_URL", "config.json")
-
-    if source.startswith("http://") or source.startswith("https://"):
-        try:
-            resp = httpx.get(source)
-            resp.raise_for_status()
-            cfg = resp.json()
-        except httpx.HTTPError as exc:
-            logger.error("Failed to fetch config from %s: %s", source, exc)
-            cfg = DEFAULT_CONFIG
-    else:
-        if not os.path.isabs(source):
-            source = os.path.join(os.path.dirname(__file__), source)
-        if os.path.exists(source):
-            with open(source, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-        else:
-            cfg = DEFAULT_CONFIG
-
-    if isinstance(cfg.get("swagger"), dict):
-        cfg["swagger"] = [cfg["swagger"]]
-    return cfg
 
 
 async def create_app(cfg: dict) -> Starlette:
@@ -90,6 +32,7 @@ async def create_app(cfg: dict) -> Starlette:
     clients: list[httpx.AsyncClient] = []
 
     for spec_cfg in cfg["swagger"]:
+        logger.info("Loading Swagger spec: %s", spec_cfg.get("path", "unknown"))
         try:
             spec = _load_spec(spec_cfg)
         except (httpx.HTTPError, ValueError) as exc:
@@ -154,7 +97,33 @@ async def main(config_source: str | None = None) -> None:
             os.path.join(os.path.dirname(__file__), "config.json"),
         )
 
-    cfg = load_config(config_source)
+    # Support comma separated list of config paths or URLs
+    if "," in str(config_source):
+        sources = [s.strip() for s in str(config_source).split(",") if s.strip()]
+    else:
+        sources = config_source
+
+    extra_sources = os.environ.get("EXTRA_CONFIGS")
+    if extra_sources:
+        env_list = [s.strip() for s in extra_sources.split(",") if s.strip()]
+        if isinstance(sources, list):
+            sources.extend(env_list)
+        else:
+            sources = [sources] + env_list
+
+    cfg = load_config(sources)
+
+    db_url = os.environ.get("DB_URL")
+    if db_url:
+        db_cfg = load_config_from_postgres(db_url)
+        if db_cfg:
+            cfg = db_cfg
+        else:
+            save_config_to_postgres(cfg, db_url)
+
+    export_path = os.environ.get("EXPORT_CONFIG")
+    if export_path:
+        export_config(cfg, export_path)
     app = await create_app(cfg)
 
     config = uvicorn.Config(
@@ -162,9 +131,6 @@ async def main(config_source: str | None = None) -> None:
     )
     server_uvicorn = uvicorn.Server(config)
     await server_uvicorn.serve()
-
-    for client in clients:
-        await client.aclose()
 
 if __name__ == "__main__":
     # Optional config path or URL can be provided as the first argument

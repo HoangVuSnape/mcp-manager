@@ -101,7 +101,9 @@ Set the `database` field in `config.json` (or the `DB_URL` environment
 variable) to a SQLAlchemy connection URL for a PostgreSQL database.
 Registered Swagger specs are stored in this database when added via
 `/add-server` and reloaded automatically on startup so no information is
-lost across restarts.
+lost across restarts. The server will retry connecting to the database for a
+short time on startup which helps when running with Docker where the database
+service might need a few seconds to become available.
 
 ### Disabling tools
 

@@ -12,17 +12,17 @@ from fastmcp.server.openapi import FastMCPOpenAPI
 import httpx
 import uvicorn
 
-from . import db
+import db
 
-from . import routes, models
+import routes, models
 
-from .utils.config_utils import DEFAULT_CONFIG, export_config, load_config
-from .utils.db_utils import (
+from utils.config_utils import DEFAULT_CONFIG, export_config, load_config
+from utils.db_utils import (
     load_config_from_postgres,
     save_config_to_postgres,
 )
-from .utils.openapi_utils import _get_prefix, _load_spec
-from .utils import db_utils  # expose db_utils for tests
+from utils.openapi_utils import _get_prefix, _load_spec
+from utils import db_utils  # expose db_utils for tests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

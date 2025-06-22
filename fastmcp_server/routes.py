@@ -1,13 +1,13 @@
 """Route handlers and shared state for the Swagger server."""
 
 from fastapi import FastAPI, Request, HTTPException
-from . import models
+import models
 from fastmcp import FastMCP
 from fastmcp.server.openapi import FastMCPOpenAPI
 import httpx
 
-from . import db
-from .utils.openapi_utils import _get_prefix, _load_spec
+import db
+from utils.openapi_utils import _get_prefix, _load_spec
 
 # Runtime storage for loaded OpenAPI specs and their configs
 spec_data: dict[str, dict] = {}
@@ -94,17 +94,17 @@ def make_add_server_handler(
             raise HTTPException(status_code=400, detail="prefix already exists")
 
         try:
-            spec = _load_spec(spec_cfg)
+            loaded_spec = _load_spec(spec_cfg)
         except (httpx.HTTPError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         client = httpx.AsyncClient(base_url=spec_cfg["apiBaseUrl"])
         sub_server = FastMCPOpenAPI(
-            openapi_spec=spec,
+            openapi_spec=loaded_spec,
             client=client,
             name=f"{spec_cfg.get('prefix', 'api')} server",
         )
-        spec_data[prefix] = spec
+        spec_data[prefix] = spec.model_dump()
         spec_configs[prefix] = spec_cfg
 
         tool_count = len(await sub_server.get_tools())

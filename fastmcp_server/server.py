@@ -4,13 +4,26 @@ import asyncio
 import logging
 import os
 import sys
-from fastmcp import FastMCP
-from fastmcp.server.openapi import FastMCPOpenAPI
+from functools import partial
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastmcp import FastMCP
+from fastmcp.server.openapi import FastMCPOpenAPI
 import httpx
 import uvicorn
+
 from . import db
+
+from .routes import (
+    close_clients,
+    health,
+    make_add_server_handler,
+    make_list_servers_handler,
+    make_set_tool_enabled_handler,
+    export_server,
+    spec_data,
+)
 
 from .utils.config_utils import DEFAULT_CONFIG, export_config, load_config
 from .utils.db_utils import (
@@ -23,27 +36,22 @@ from .utils import db_utils  # expose db_utils for tests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Runtime storage for loaded OpenAPI specs and their configs
-spec_data: dict[str, dict] = {}
-spec_configs: dict[str, dict] = {}
 
-
-
-async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
-    """Build and return the FastAPI application for the given config."""
-    root_server = FastMCP(name="Swagger MCP Server")
-    app = FastAPI()
-
-    # Initialise database connection if provided
+async def initialize_db(cfg: dict, db_url: str | None) -> db.async_sessionmaker:
+    """Return a database sessionmaker based on the provided config."""
     db_url = db_url or cfg.get("database")
-    session_maker = None
     if db_url:
-        session_maker = await db.init_db(db_url)
-    if session_maker is None:
-        session_maker = await db.init_db("sqlite+aiosqlite:///:memory:")
-    app.state.db_session = session_maker
-    app.state.root_server = root_server
+        return await db.init_db(db_url)
+    return await db.init_db("sqlite+aiosqlite:///:memory:")
 
+
+async def load_specs(
+    cfg: dict,
+    root_server: FastMCP,
+    app: FastAPI,
+    session_maker: db.async_sessionmaker,
+) -> tuple[list[tuple[str, int]], list[httpx.AsyncClient]]:
+    """Load swagger specs and mount them into the root server."""
     server_info: list[tuple[str, int]] = []
     clients: list[httpx.AsyncClient] = []
 
@@ -63,21 +71,16 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
             client=client,
             name=f"{spec_cfg.get('prefix', 'api')} server",
         )
-        spec_data[_get_prefix(spec_cfg)] = spec
-
-        tool_count = len(await sub_server.get_tools())
 
         prefix = _get_prefix(spec_cfg)
+        spec_data[prefix] = spec
 
+        tool_count = len(await sub_server.get_tools())
         server_info.append((prefix, tool_count))
 
-        # Mount tools into the shared root server
         root_server.mount(prefix, sub_server)
-
-        # Mount individual SSE app for this swagger specification
         app.mount(f"/{prefix}", sub_server.sse_app())
 
-        # Apply stored tool enable states
         async with session_maker() as session:
             for ts in await db.get_tool_statuses(session, prefix):
                 tools = await sub_server.get_tools()
@@ -86,6 +89,22 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
                         tools[ts.name].enable()
                     else:
                         tools[ts.name].disable()
+
+    return server_info, clients
+
+
+
+
+async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
+    """Build and return the FastAPI application for the given config."""
+    root_server = FastMCP(name="Swagger MCP Server")
+    app = FastAPI()
+
+    session_maker = await initialize_db(cfg, db_url)
+    app.state.db_session = session_maker
+    app.state.root_server = root_server
+
+    server_info, clients = await load_specs(cfg, root_server, app, session_maker)
 
     logger.info("Loaded %d Swagger servers:", len(server_info))
     for prefix, count in server_info:
@@ -96,94 +115,40 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to count tools: %s", exc)
 
-    async def health(_: Request):
-        return JSONResponse({"status": "ok"})
-
-    async def list_servers(_: Request):
-        return JSONResponse({"servers": [p for p, _ in server_info]})
-
-    async def add_server(request: Request):
-        """Dynamically mount a new Swagger specification."""
-        spec_cfg = await request.json()
-        prefix = _get_prefix(spec_cfg)
-
-        if any(p == prefix for p, _ in server_info):
-            return JSONResponse({"error": "prefix already exists"}, status_code=400)
-
-        try:
-            spec = _load_spec(spec_cfg)
-        except (httpx.HTTPError, ValueError) as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
-
-        client = httpx.AsyncClient(base_url=spec_cfg["apiBaseUrl"])
-        sub_server = FastMCPOpenAPI(
-            openapi_spec=spec,
-            client=client,
-            name=f"{spec_cfg.get('prefix', 'api')} server",
-        )
-        spec_data[prefix] = spec
-        spec_configs[prefix] = spec_cfg
-
-        tool_count = len(await sub_server.get_tools())
-
-        root_server.mount(prefix, sub_server)
-        app.mount(f"/{prefix}", sub_server.sse_app())
-
-        server_info.append((prefix, tool_count))
-        clients.append(client)
-        cfg.setdefault("swagger", []).append(spec_cfg)
-
-        async with app.state.db_session() as session:
-            await db.add_spec(session, spec_cfg)
-
-        return JSONResponse({"added": prefix, "tools": tool_count})
-
-    async def export_server(prefix: str, _: Request) -> JSONResponse:
-        """Return the stored OpenAPI specification for a prefix."""
-        if prefix not in spec_data:
-            return JSONResponse({"error": "prefix not found"}, status_code=404)
-        return JSONResponse(spec_data[prefix])
-
-    async def set_tool_enabled(request: Request) -> JSONResponse:
-        """Enable or disable a specific tool by prefix and name."""
-        data = await request.json()
-        prefix = data.get("prefix")
-        name = data.get("name")
-        enabled = data.get("enabled", False)
-        if not prefix or not name:
-            return JSONResponse({"error": "prefix and name required"}, status_code=400)
-        server = root_server._mounted_servers.get(prefix)
-        if server is None:
-            return JSONResponse({"error": "prefix not found"}, status_code=404)
-        tools = await server.get_tools()
-        if name not in tools:
-            return JSONResponse({"error": "tool not found"}, status_code=404)
-        tool = tools[name]
-        if enabled:
-            tool.enable()
-        else:
-            tool.disable()
-        async with app.state.db_session() as session:
-            await db.set_tool_enabled(session, prefix, name, bool(enabled))
-        return JSONResponse({"tool": name, "enabled": bool(enabled)})
-
     app.add_api_route("/health", health, methods=["GET"])
-    app.add_api_route("/list-server", list_servers, methods=["GET"])
-    app.add_api_route("/add-server", add_server, methods=["POST"])
+    app.add_api_route(
+        "/list-server",
+        make_list_servers_handler(server_info),
+        methods=["GET"],
+    )
+    app.add_api_route(
+        "/add-server",
+        make_add_server_handler(
+            root_server,
+            app,
+            server_info,
+            clients,
+            cfg,
+            session_maker,
+        ),
+        methods=["POST"],
+    )
     app.add_api_route(
         "/export-server/{prefix}", export_server, methods=["GET"], name="export"
     )
-    app.add_api_route("/tool-enabled", set_tool_enabled, methods=["POST"])
+    app.add_api_route(
+        "/tool-enabled",
+        make_set_tool_enabled_handler(root_server, session_maker),
+        methods=["POST"],
+    )
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())
 
-    async def close_clients() -> None:
-        for client in clients:
-            await client.aclose()
-        await session_maker.bind.dispose()
-
-    app.add_event_handler("shutdown", close_clients)
+    app.add_event_handler(
+        "shutdown",
+        partial(close_clients, clients=clients, session_maker=session_maker),
+    )
     return app
 
 async def main(config_source: str | None = None) -> None:

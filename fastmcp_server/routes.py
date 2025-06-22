@@ -33,6 +33,26 @@ def make_list_servers_handler(server_info: list[tuple[str, int]]):
     return list_servers
 
 
+def make_list_tools_handler(root_server: FastMCP):
+    """Return a handler that lists available tools.
+
+    If a ``prefix`` query parameter is provided only tools for that
+    mounted server are returned. Otherwise all tools registered on the
+    root server are listed.
+    """
+
+    async def list_tools(request: Request) -> JSONResponse:
+        prefix = request.query_params.get("prefix")
+        server = root_server if prefix is None else root_server._mounted_servers.get(prefix)
+        if server is None:
+            return JSONResponse({"error": "prefix not found"}, status_code=404)
+
+        tools = await server.get_tools()
+        return JSONResponse({"tools": list(tools)})
+
+    return list_tools
+
+
 def make_add_server_handler(
     root_server: FastMCP,
     app: FastAPI,

@@ -150,6 +150,18 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
         methods=["POST"],
         response_model=models.ToolEnabledResponse,
     )
+    app.add_api_route(
+        "/search-enabled",
+        routes.make_set_search_enabled_handler(),
+        methods=["POST"],
+        response_model=models.SearchEnabledResponse,
+    )
+    app.add_api_route(
+        "/search",
+        routes.make_search_handler(root_server),
+        methods=["GET"],
+        response_model=models.SearchResponse,
+    )
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())

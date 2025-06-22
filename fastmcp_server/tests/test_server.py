@@ -219,3 +219,45 @@ def test_list_tools_endpoint():
     resp_all = asyncio.run(call_all())
     assert resp_all.status_code == 200
     assert len(resp_all.json()["tools"]) >= len(data["tools"])
+
+
+def test_search_enabled_endpoint():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+
+    app = asyncio.run(server.create_app(cfg))
+    prefix = cfg["swagger"][0]["prefix"]
+
+    async def toggle() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.post("/search-enabled", json={"prefix": prefix, "enabled": False})
+
+    resp = asyncio.run(toggle())
+    assert resp.status_code == 200
+    assert resp.json()["enabled"] is False
+
+
+def test_search_endpoint():
+    cfg = server.load_config()
+    cfg["database"] = "sqlite+aiosqlite:///:memory:"
+
+    app = asyncio.run(server.create_app(cfg))
+    prefix = cfg["swagger"][0]["prefix"]
+
+    async def first_tool() -> str:
+        srv = app.state.root_server._mounted_servers[prefix]
+        tools = await srv.get_tools()
+        return next(iter(tools))
+
+    tool_name = asyncio.run(first_tool())
+
+    async def search_call() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get(f"/search?prefix={prefix}&name={tool_name}")
+
+    resp = asyncio.run(search_call())
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any(r["tool"] == tool_name for r in data.get("results", []))

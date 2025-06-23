@@ -96,15 +96,12 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
     app.state.root_server = root_server
 
     server_info, clients = await load_specs(cfg, root_server, app, session_maker)
+
     logger.info("Loaded %d Swagger servers:", len(server_info))
     for prefix, count in server_info:
         logger.info("  - %s: %d tools", prefix, count)
     try:
         total_tools = len(await root_server.get_tools())
-        # logger.info("------------------------")
-        total_tools_name = await root_server.get_tools()
-        logger.info("Total tools loaded: %s", total_tools_name)
-        # logger.info("------------------------")
         logger.info("Total tools available: %d", total_tools)
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to count tools: %s", exc)
@@ -127,15 +124,6 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
         methods=["GET"],
         response_model=models.ListToolsResponse,
     )
-    
-    app.add_api_route(
-        "/list-tools-enabled",
-        routes.make_list_tools_handler2(root_server),
-        methods=["GET"],
-        response_model=models.ListToolsResponseEnable,
-    )
-
-    
     app.add_api_route(
         "/add-server",
         routes.make_add_server_handler(
@@ -174,13 +162,6 @@ async def create_app(cfg: dict, db_url: str | None = None) -> FastAPI:
         methods=["GET"],
         response_model=models.SearchResponse,
     )
-    
-    app.add_api_route(
-        "/external-tools",
-        routes.make_external_tools_handler(),
-        methods=["GET"],
-        response_model=dict,  # hoặc response_model phù hợp nếu bạn có model
-    )
 
     # Mount shared server at root (after /health route)
     app.mount("/", root_server.sse_app())
@@ -215,8 +196,7 @@ async def main(config_source: str | None = None) -> None:
             sources = [sources] + env_list
 
     cfg = load_config(sources)
-    logger.info("Loaded configuration: %s", cfg)
-    
+
     db_url = os.environ.get("DB_URL")
     if db_url:
         db_cfg = load_config_from_postgres(db_url)

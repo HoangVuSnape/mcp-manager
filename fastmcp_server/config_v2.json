@@ -1,0 +1,23 @@
+{
+  "swagger": [
+    {
+      "path": "examples/swagger-pet-store.json",
+      "apiBaseUrl": "https://petstore.swagger.io/v2",
+      "prefix": "petstore"
+    },
+    {
+      "path": "https://raw.githubusercontent.com/xgirma/swagger.3.0.examples/refs/heads/master/link-example.json",
+      "apiBaseUrl": "https://petstore.swagger.io/v2/",
+      "prefix": "test"
+    },
+    {
+      "path": "https://itv.kingwork.vn/api/swagger-docs.json",
+      "apiBaseUrl": "https://itv.kingwork.vn/api/swagger-api/",
+      "prefix": "itv"
+    }
+  ],
+  "server": {
+    "host": "0.0.0.0",
+    "port": 3000
+  }
+}

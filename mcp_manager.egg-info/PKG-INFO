@@ -1,0 +1,27 @@
+Metadata-Version: 2.4
+Name: mcp-manager
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastmcp>=2.8.1
+Requires-Dist: fastapi>=0.111.0
+Requires-Dist: httpx>=0.28.1
+Requires-Dist: SQLAlchemy>=2.0
+Requires-Dist: aiosqlite>=0.20.0
+Requires-Dist: ipykernel>=6.29.5
+Requires-Dist: psycopg2-binary>=2.9.10
+Requires-Dist: pytest>=8.4.1
+Requires-Dist: pytest-httpx>=0.35.0
+Requires-Dist: uvicorn>=0.34.3
+Requires-Dist: gradio>=4.28.0
+Dynamic: license-file
+
+# MCP Manager Examples
+
+This repository contains small demonstrations for working with the Model Context Protocol.
+
+## fastmcp_server
+
+A simple Python server built with [fastmcp](https://pypi.org/project/fastmcp/) that exposes an OpenAPI specification as MCP tools. See [`fastmcp_server/README.md`](fastmcp_server/README.md) for usage instructions.

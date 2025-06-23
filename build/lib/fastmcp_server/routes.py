@@ -1,12 +1,11 @@
 """Route handlers and shared state for the Swagger server."""
 
-from fastapi import FastAPI, Query, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 import models
 from fastmcp import FastMCP
 from fastmcp.server.openapi import FastMCPOpenAPI
 import httpx
-from fastapi import Query
-from fastmcp import Client
+
 import db
 from utils.openapi_utils import _get_prefix, _load_spec
 
@@ -35,8 +34,6 @@ ToolEnabledRequest = models.ToolEnabledRequest
 
 
 ToolEnabledResponse = models.ToolEnabledResponse
-
-ListToolsResponseEnable = models.ListToolsResponseEnable
 
 
 async def close_clients(
@@ -76,38 +73,9 @@ def make_list_tools_handler(root_server: FastMCP):
             raise HTTPException(status_code=404, detail="prefix not found")
 
         tools = await server.get_tools()
-        print(tools)
-            
-        
         return ListToolsResponse(tools=list(tools))
 
     return list_tools
-
-def make_list_tools_handler2(root_server: FastMCP):
-    """Return a handler that lists available tools.
-
-    If a ``prefix`` query parameter is provided only tools for that
-    mounted server are returned. Otherwise all tools registered on the
-    root server are listed.
-    """
-
-    async def list_tools(request: Request) -> ListToolsResponseEnable:
-        """List tools for the given prefix or all servers."""
-        prefix = request.query_params.get("prefix")
-        server = root_server if prefix is None else root_server._mounted_servers.get(prefix)
-        if server is None:
-            raise HTTPException(status_code=404, detail="prefix not found")
-
-        tools = await server.get_tools()
-        
-        results: list[models.ToolStatus] = []
-        for tool_name, tool in tools.items():
-            results.append(models.ToolStatus(name=tool_name, enabled=tool.enabled))
-
-        return ListToolsResponseEnable(tools=results)
-
-    return list_tools
-
 
 
 def make_add_server_handler(
@@ -183,7 +151,6 @@ def make_set_tool_enabled_handler(
         tool = tools[name]
         if enabled:
             tool.enable()
-            # check = await tool.enabled
         else:
             tool.disable()
         async with session_maker() as session:
@@ -233,9 +200,3 @@ def make_search_handler(root_server: FastMCP):
 
     return search
 
-def make_external_tools_handler():
-    async def external_tools(api_base_url: str = Query(..., description="API base URL")):
-        async with Client(api_base_url) as client:
-            tools = await client.list_tools()
-            return {"tools": [tool.name for tool in tools]}
-    return external_tools

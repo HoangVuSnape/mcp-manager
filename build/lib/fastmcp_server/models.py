@@ -17,15 +17,6 @@ class ListToolsResponse(BaseModel):
     """Response model for list-tools."""
 
     tools: list[str]
-class ToolStatus(BaseModel):
-    """Tool model containing name and enabled state."""
-    name: str
-    enabled: bool
-
-class ListToolsResponseEnable(BaseModel):
-    """Response model for list-tools."""
-
-    tools: list[ToolStatus]  # tool name and its enabled state
 
 
 class AddServerRequest(BaseModel):

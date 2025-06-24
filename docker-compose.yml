@@ -14,7 +14,7 @@ services:
       - db
     environment:
       CONFIG_URL: /app/config.json
-      DB_URL: postgres://mcp:mcp@db:5432/mcp
+      DB_URL: postgres://mcp:mcp@db:5432/mcp 
     volumes:
       - ./fastmcp_server/config.json:/app/config.json:ro
     ports:

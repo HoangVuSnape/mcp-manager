@@ -1,12 +1,13 @@
 import streamlit as st
 import requests
-from utils import fetch_list_servers, fetch_list_tools
-# save cache streamlit
-# @st.cache_data
+from utils import fetch_list_servers, fetch_list_tools, tool_enabled
 from math import ceil
 import logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import time
+import httpx
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
+
 # Custom CSS
 st.markdown("""
 <style>
@@ -52,6 +53,26 @@ st.markdown("""
         margin: 10px 0;
         background-color: #f9f9f9;
     }
+    .tool-card {
+        padding: 4px;
+        margin: 8px 0;
+
+    }
+    .tool-name {
+        font-size: 16px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 8px;
+    }
+    .tool-prefix {
+        font-size: 12px;
+        color: #7f8c8d;
+        background-color: #ecf0f1;
+        padding: 2px 8px;
+        border-radius: 12px;
+        display: inline-block;
+        margin-bottom: 10px;
+    }
     .metric-container {
         display: flex;
         justify-content: space-around;
@@ -60,119 +81,320 @@ st.markdown("""
     .stToggle > div {
         margin-top: 10px;
     }
+    .search-container {
+        background-color: #091017;
+        padding: 2px;
+        border-radius: 1px;
+        margin-bottom: 1px;
+    }
+    .select-all-checkbox {
+        margin-right: 0px; 
+        margin-top: 30px;
+    
 </style>
 """, unsafe_allow_html=True)
+
 st.set_page_config(page_title="MCP Server Management Dashboard", layout="wide")
 
 st.title("🖥️ MCP Server Management Dashboard")
 st.caption("Manage and monitor your Model Context Protocol (MCP) servers")
 
+def update_all_tools_filtered(tools_list, enable_all, api_url_tools_toggle, search_query="", status_filter="All"):
+    """Update all filtered tools to enabled or disabled state"""
+    # Apply filters first
+    filtered_tools = apply_filters(tools_list, search_query, status_filter)
+    
+    if not filtered_tools:
+        return False, "No tools to update"
+    
+    success_count = 0
+    failed_tools = []
+    
+    # Create progress bar
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, tool in enumerate(filtered_tools):
+        name = tool.get("name", "")
+        enabled = tool.get("enabled", False)
+        
+        # Only update if state is different
+        if enabled != enable_all:
+            prefix = name.split("_")[0] if "_" in name else name
+            
+            payload = {
+                "prefix": prefix,
+                "name": name,
+                "enabled": enable_all
+            }
+            
+            status_text.text(f"Updating {name}...")
+            
+            try:
+                result = tool_enabled(api_url_tools_toggle, payload)
+                if result:
+                    success_count += 1
+                else:
+                    failed_tools.append(name)
+            except Exception as e:
+                failed_tools.append(f"{name} (Error: {str(e)})")
+        
+        # Update progress
+        progress_bar.progress((i + 1) / len(filtered_tools))
+    
+    # Clear progress indicators
+    progress_bar.empty()
+    status_text.empty()
+    
+    return success_count > 0, f"Updated {success_count} tools successfully" + (f", Failed: {failed_tools}" if failed_tools else "")
 
-def visualize_servers(list_servers, search_query):
+def visualize_servers(select_all, list_servers, search_query):
     """Visualize the list of servers."""
     if not list_servers:
-        st.write("Không có server nào được tìm thấy.")
+        st.info("📭 Không có server nào được tìm thấy.")
         return
     
-    st.write("Danh sách các server:")
-    # for server in servers:
-    #     st.write(f"- {server}")
-    
-    
+    # Filter servers based on search query
     if search_query:
-        list_servers = [s for s in list_servers if search_query.lower() in s.lower()]
+        filtered_servers = [s for s in list_servers if search_query.lower() in s.lower()]
     else:
-        list_servers = [s for s in list_servers if s]  # Filter out empty
+        filtered_servers = [s for s in list_servers if s]  # Filter out empty
     
-    print("Filtered servers:", list_servers)
-    # Filtered servers: ['petstore', 'kingworks']
-    if not list_servers:
-        st.write("Không có server nào khớp với tìm kiếm.")
+    if not filtered_servers:
+        st.warning("🔍 Không có server nào khớp với tìm kiếm.")
         return
     
-        # --- Hiển thị các tool theo dạng 3 cột mỗi dòng ---
+    st.info(f"📊 Tìm thấy {len(filtered_servers)} server(s)")
+    
+    # Display servers in grid layout
     cols_per_row = 4
-    num_rows = ceil(len(list_servers) / cols_per_row)
+    num_rows = ceil(len(filtered_servers) / cols_per_row)
 
     for row in range(num_rows):
         cols = st.columns(cols_per_row)
 
         for i in range(cols_per_row):
             index = row * cols_per_row + i
-            if index >= len(list_servers):
+            if index >= len(filtered_servers):
                 break
 
-            server = list_servers[index]
-            # print("Server:", server)
+            server = filtered_servers[index]
             with cols[i]:
-                with st.container(border=True):
-                    st.markdown(f"##### {server}")
-                    st.toggle("Enable", key=f"toggle_{server}", value=True)
+                with st.container():
+                    st.markdown(f"""
+                    <div class="server-card">
+                        <h4>🖥️ {server}</h4>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Server toggle
+                    # server_enabled = st.toggle(
+                    #     "Enable Server", 
+                    #     key=f"server_toggle_{server}", 
+                    #     value=True,
+                    #     help=f"Enable/Disable {server} server"
+                    # )
+                    
 
-
-
-def visualize_tools(tools_list, search_query):
-    """Visualize the list of tools."""
+def apply_filters(tools_list, search_query, status_filter):
+    """Apply search and status filters to tools list"""
     if not tools_list:
-        st.write("Không có tools nào được tìm thấy.")
-        return
+        return []
     
-    st.write("Danh sách các tools:")
+    filtered_tools = tools_list
     
-    # for tool in tools_list:
-    #     name = tool.get("name")
-    #     enabled = tool.get("enabled")
-    #     # st.write(f"Tool: {name} | Enabled: {enabled}")
-    
+    # Apply search filter
     if search_query:
-        tools_list_filtered = [t for t in tools_list if search_query.lower() in t.get("name", "").lower()]
-    else:
-        tools_list_filtered = [t for t in tools_list if t]
+        filtered_tools = [t for t in filtered_tools if search_query.lower() in t.get("name", "").lower()]
+    
+    # Apply status filter
+    if status_filter and status_filter != "All":
+        if status_filter == "Enabled":
+            filtered_tools = [t for t in filtered_tools if t.get("enabled", False)]
+        elif status_filter == "Disabled":
+            filtered_tools = [t for t in filtered_tools if not t.get("enabled", False)]
+        else:
+            # Filter by prefix
+            filtered_tools = [t for t in filtered_tools if t.get("name", "").startswith(status_filter)]
+    
+    return filtered_tools
+
+def visualize_tools(select_all, tools_list, search_query, status_filter, api_url_tools_toggle):
+    """Visualize the list of tools with toggle functionality."""
+    if not tools_list:
+        st.info("📭 Không có tools nào được tìm thấy.")
+        return [], False
+    
+    # Apply filters
+    filtered_tools = apply_filters(tools_list, search_query, status_filter)
         
-    cols_per_row = 4
-    num_rows = ceil(len(tools_list_filtered) / cols_per_row)
+    if not filtered_tools:
+        st.warning("🔍 Không có tool nào khớp với bộ lọc.")
+        return [], False
+    
+    st.info(f"🔧 Tìm thấy {len(filtered_tools)} tool(s)")
+    
+    # Initialize session state for individual checkboxes if not exists
+    if 'individual_selections' not in st.session_state:
+        st.session_state.individual_selections = {}
+    
+    selected_tools = []
+    any_individual_selected = False
+    
+    # Reset individual selections when select_all changes
+    if 'prev_select_all' not in st.session_state:
+        st.session_state.prev_select_all = False
+    
+    # Check if select_all state changed
+    if st.session_state.prev_select_all != select_all:
+        if select_all:
+            # Select all - set all individual checkboxes to True
+            for tool in filtered_tools:
+                name = tool.get("name", "")
+                checkbox_key = f"checkbox_{name}"
+                st.session_state.individual_selections[checkbox_key] = True
+        else:
+            # Deselect all - set all individual checkboxes to False
+            for tool in filtered_tools:
+                name = tool.get("name", "")
+                checkbox_key = f"checkbox_{name}"
+                st.session_state.individual_selections[checkbox_key] = False
+        
+        st.session_state.prev_select_all = select_all
+    
+    # Display tools in grid layout
+    cols_per_row = 3  # Reduced to 3 for better readability
+    num_rows = ceil(len(filtered_tools) / cols_per_row)
 
     for row in range(num_rows):
         cols = st.columns(cols_per_row)
 
         for i in range(cols_per_row):
             index = row * cols_per_row + i
-            if index >= len(tools_list_filtered):
+            if index >= len(filtered_tools):
                 break
 
-            tool = tools_list_filtered[index]
-            name = tool.get("name")
-            enabled = tool.get("enabled")
+            tool = filtered_tools[index]
+            name = tool.get("name", "")
+            enabled = tool.get("enabled", False)
+            
+            # Extract prefix from tool name
+            prefix = name.split("_")[0] if "_" in name else name
+            
             with cols[i]:
                 with st.container(border=True):
-                    st.markdown(f"##### {name}")
-                    st.toggle("Enable", key=f"toggle_{name}", value=enabled)
-    
-    # with col4:
-    #             # Toggle switch for server state
-    #             current_state = server.state == "on"
-    #             new_state = st.toggle(
-    #                 "Enable", 
-    #                 key=f"toggle_{server.id}_{idx}", 
-    #                 value=current_state,
-    #                 help=f"Toggle {server.name} on/off"
-    #             )
-                
-    #             # Update state if changed
-    #             if new_state != current_state:
-    #                 state_value = "on" if new_state else "off"
-    #                 if mcp_service.toggle_server_state(server.id, state_value):
-    #                     st.success(f"✅ {server.name} {'enabled' if new_state else 'disabled'}")
-    #                     time.sleep(1)
-    #                     st.rerun()
-    #                 else:
-    #                     st.error(f"❌ Failed to update {server.name}")
-    #         st.divider()       
+                    
+                    c1, c2 = st.columns([0.2, 5])
+                    with c1:
+                        # Individual checkbox logic
+                        checkbox_key = f"checkbox_{name}"
+                        
+                        # Initialize individual selection state
+                        if checkbox_key not in st.session_state.individual_selections:
+                            st.session_state.individual_selections[checkbox_key] = select_all
+                        
+                        # Get current checkbox value
+                        checkbox_value = st.session_state.individual_selections[checkbox_key]
+                        
+                        # Create checkbox
+                        individual_selected = st.checkbox(
+                            "", 
+                            value=checkbox_value, 
+                            key=checkbox_key,
+                            on_change=lambda key=checkbox_key: handle_individual_checkbox_change(key)
+                        )
+                        
+                        # Update selection state
+                        st.session_state.individual_selections[checkbox_key] = individual_selected
+                        
+                        # Track selections
+                        if individual_selected:
+                            selected_tools.append(name)
+                            if not select_all:
+                                any_individual_selected = True
+                    
+                    with c2:
+                        st.markdown(f"""
+                        <div class="tool-card">
+                            <div class="tool-prefix">{prefix}</div>
+                            <div class="tool-name">{name}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
+                        # Tool toggle with callback
+                        new_state = st.toggle(
+                            "Enable Tool", 
+                            key=f"tool_toggle_{name}_{index}", 
+                            value=enabled,
+                            help=f"Enable/Disable {name}"
+                        )
+                    
+                    # Handle toggle state change
+                    if new_state != enabled:
+                        # Prepare payload for API call
+                        payload = {
+                            "prefix": prefix,
+                            "name": name,
+                            "enabled": new_state
+                        }
+                        
+                        # Call API to update tool state
+                        with st.spinner(f"Updating {name}..."):
+                            try:
+                                result = tool_enabled(api_url_tools_toggle, payload)
+                                if result:
+                                    st.success(f"✅ {name} {'enabled' if new_state else 'disabled'}")
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Failed to update {name}")
+                            except Exception as e:
+                                st.error(f"❌ Error updating {name}: {str(e)}")
+    
+    return selected_tools, any_individual_selected
+
+def handle_individual_checkbox_change(checkbox_key):
+    """Handle individual checkbox state changes"""
+    # When an individual checkbox is changed, we need to update the select_all state
+    if checkbox_key in st.session_state:
+        st.session_state.individual_selections[checkbox_key] = st.session_state[checkbox_key]
+        
+        # If any individual checkbox is unchecked, uncheck select_all
+        if not st.session_state[checkbox_key] and st.session_state.get('select_all_checkbox', False):
+            st.session_state.select_all_checkbox = False
+
+def sidebar():
+    st.sidebar.title("🔧 Add Server Configuration")
+
+    # Nhập URL của server
+    url = st.sidebar.text_input("URL", "http://localhost:3000/add-server")
+
+    # Nhập các giá trị payload
+    path = st.sidebar.text_input("Path", "https://petstore3.swagger.io/api/v3/openapi.json")
+    api_base_url = st.sidebar.text_input("API Base URL", "https://petstore3.swagger.io/api/v3")
+    prefix = st.sidebar.text_input("Prefix", "petstore3")
+
+    if st.sidebar.button("➕ Add Server"):
+        payload = {
+            "path": path,
+            "apiBaseUrl": api_base_url,
+            "prefix": prefix
+        }
+
+        try:
+            result = tool_enabled(url, payload)
+            if result:
+                st.success(f"✅ Added server {prefix} successfully")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error(f"❌ Failed to update")
+        except Exception as e:
+            st.error(f"❌ Error updating: {str(e)}")
+             
 
 def main():
-    st.title("List Servers từ FastAPI")
-
+    # API Configuration
     host = "http://localhost:3000/"
     list_servers_endpoint = "list-server"
     api_url_server = f"{host}{list_servers_endpoint}"
@@ -180,50 +402,138 @@ def main():
     api_tools_endpoint = "list-tools-enabled"
     api_url_tools = f"{host}{api_tools_endpoint}"
     
-    # --- Thanh công cụ ---
-    col1, col2, col3, col4, col5 = st.columns([1, 6, 1, 1, 1])
+    # API endpoint for toggling tools
+    api_tools_toggle_endpoint = "tool-enabled"  # Adjust this endpoint as needed
+    api_url_tools_toggle = f"{host}{api_tools_toggle_endpoint}"
+    
+    sidebar()
+    
+    # Initialize session state
+    if 'tools_data' not in st.session_state:
+        st.session_state.tools_data = []
+    if 'individual_selections' not in st.session_state:
+        st.session_state.individual_selections = {}
+    
+    # Search and Control Panel
+    st.markdown('<div class="search-container">', unsafe_allow_html=True)
+    
+    col1, col2, col3, col4, col5 = st.columns([1, 4, 1, 1, 1])
 
     with col1:
-        select_all = st.checkbox("Chọn tất cả", key="select_all_checkbox")
+        # Handle Select All logic
+        st.markdown('<div class="select-all-checkbox">', unsafe_allow_html=True)
+        if st.checkbox("🔘 Select All", key="select_all_checkbox"):
+            # When Select All is checked, clear all individual selections
+            for key in st.session_state.individual_selections:
+                st.session_state.individual_selections[key] = False
+        
+        select_all = st.session_state.get('select_all_checkbox', False)
 
     with col2:
-        search_query = st.text_input("Search Tools", placeholder="Enter tool name...")
+        search_query = st.text_input("", placeholder="Enter server/tool name...")
+
 
     with col3:
-        st.button("🔍 Search")
-
+        # Get unique prefixes for filter options
+        all_prefixes = set()
+        if 'tools_data' in st.session_state and st.session_state.tools_data:
+            for tool in st.session_state.tools_data:
+                name = tool.get("name", "")
+                prefix = name.split("_")[0] if "_" in name else name
+                all_prefixes.add(prefix)
+        
+        # Create filter options
+        filter_options = ["All"]
+        filter_options.extend(sorted(all_prefixes))
+        filter_options.extend(["Enabled", "Disabled"])
+        
+        status_filter = st.selectbox(
+            "Status",
+            options=filter_options,
+            help="Filter tools by status or prefix"
+        )
+        
     with col4:
-        st.button("🔽 Filter")
-
+        st.markdown('<div class="select-all-checkbox">', unsafe_allow_html=True)
+        col4a, col4b = st.columns(2)
+        with col4a:
+            on_all_btn = st.button("🟢All On", help="Enable all")
+        with col4b:
+            off_all_btn = st.button("🔴All Off", help="Disable all")
     
-    server, tools = st.tabs(["Server", "Tools"])
-
+    with col5:
+        st.markdown('<div class="select-all-checkbox">', unsafe_allow_html=True)
+        refresh_btn = st.button("🔄 Refresh", help="Refresh data")
     
-    with server:
-        st.header("Danh sách Server")
-        
+    st.markdown('</div>', unsafe_allow_html=True)
     
-        data = fetch_list_servers(api_url_server)
-        list_servers = data.get("servers", [])
-        # visualize_servers(list_servers, search_query=search_query)
+    # Main tabs
+    server_tab, tools_tab = st.tabs(["🖥️ Servers", "🔧 Tools"])
+    
+    with server_tab:
+        st.header("📋 Server Management")
         
+        try:
+            with st.spinner("Loading servers..."):
+                data = fetch_list_servers(api_url_server)
+                list_servers = data.get("servers", [])
+                
+            if refresh_btn:
+                st.rerun()
+                
+            visualize_servers(select_all, list_servers, search_query=search_query)
+            
+        except Exception as e:
+            st.error(f"❌ Error loading servers: {str(e)}")
+    
+    with tools_tab:
+        st.header("🔧 Tool Management")
         
-        # print("Data type:", type(data))
-        # print("Data content:", data["servers"])
-        # list_servers = data.get("servers", [])
-        # print("List servers:", list_servers)
-        # st.write(data)
-    with tools:
-        st.header("Danh sách Tools")
-        
-        data = fetch_list_tools(api_url_tools)
-
-        tools_list = data.get("tools", [])
-        print("Tools list:", tools_list)
-        # create uuid for each tool
-
-        visualize_tools(tools_list, search_query=search_query)
-
+        try:
+            with st.spinner("Loading tools..."):
+                data = fetch_list_tools(api_url_tools)
+                tools_list = data.get("tools", [])
+                st.session_state.tools_data = tools_list
+                
+            if refresh_btn:
+                st.rerun()
+            
+            # Get tool selection info
+            selected_tools, any_individual_selected = visualize_tools(select_all, tools_list, search_query=search_query, status_filter=status_filter, api_url_tools_toggle=api_url_tools_toggle)
+            
+            # Handle All On/Off buttons with improved logic
+            if on_all_btn or off_all_btn:
+                if not select_all and any_individual_selected:
+                    st.error("❌ Cannot use 'All On/Off' when individual tools are selected. Please either:")
+                    st.info("• Check 'Select All' to apply to all tools, OR")
+                    st.info("• Uncheck individual selections first")
+                elif not select_all and not any_individual_selected:
+                    st.warning("⚠️ Please select 'Select All' checkbox first to enable/disable all tools.")
+                elif select_all and not any_individual_selected:
+                    # All selected via Select All checkbox
+                    enable_all = on_all_btn
+                    action_text = "Enabling" if enable_all else "Disabling"
+                    
+                    with st.spinner(f"{action_text} all filtered tools..."):
+                        success, message = update_all_tools_filtered(
+                            st.session_state.tools_data, 
+                            enable_all, 
+                            api_url_tools_toggle, 
+                            search_query,
+                            status_filter
+                        )
+                        if success:
+                            st.success(f"✅ {message}")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {message}")
+                elif select_all and any_individual_selected:
+                    # Mixed selection state - this shouldn't happen with proper UI logic
+                    st.error("❌ Conflicting selection state detected. Please refresh the page.")
+            
+        except Exception as e:
+            st.error(f"❌ Error loading tools: {str(e)}")
 
 if __name__ == "__main__":
     main()

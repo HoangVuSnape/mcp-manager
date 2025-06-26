@@ -4,7 +4,7 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: mcp
-      POSTGRES_PASSWORD: mcp
+      POSTGRES_PASSWORD: ABCabc123
       POSTGRES_DB: mcp
     ports:
       - "5432:5432"
@@ -13,10 +13,10 @@ services:
     depends_on:
       - db
     environment:
-      CONFIG_URL: /app/config.json
-      DB_URL: postgres://mcp:mcp@db:5432/mcp 
+      # CONFIG_URL: /app/config.json
+      DB_URL: postgres://mcp:ABCabc123@db:5432/mcp
     volumes:
-      - ./fastmcp_server/config.json:/app/config.json:ro
+      # - ./fastmcp_server/config.json:/app/config.json:ro
     ports:
       - "3000:3000"
     develop:

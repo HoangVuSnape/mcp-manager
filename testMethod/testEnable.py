@@ -1,9 +1,16 @@
 import httpx
 
+# url = "http://localhost:3000/tool-enabled"
+# payload = {
+#     "prefix": "petstore",
+#     "name": "petstore_findPetsByStatus",
+#     "enabled": True
+# }
+
 url = "http://localhost:3000/tool-enabled"
 payload = {
-    "prefix": "petstore",
-    "name": "petstore_findPetsByStatus",
+    "prefix": "itv",
+    "name": "itv_ApplicationController_synchronizedMaster",
     "enabled": True
 }
 

@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from langchain_community.chat_message_histories import StreamlitChatMessageHistory
 from agent import get_llm_and_agent as agentV1
-from retrievalMCP.models import models
+
 
 import warnings
 
@@ -17,8 +17,8 @@ def setup_page():
     Cấu hình giao diện trang web
     """
     st.set_page_config(
-        page_title="Law Assistant",
-        page_icon="🎓",
+        page_title="HRM Innotech Assistant",
+        page_icon="🤖",
         layout="wide"
     )
 
@@ -46,10 +46,11 @@ def setup_sidebar():
     """
     with st.sidebar:
         st.title("⚙️ Cấu hình")
-        st.header("🎓 Trợ Lý Luật")
+        st.header("🎓 Trợ Lý HRM Innotech Việt Nam")
         st.markdown(
             """
-            Hệ thống hỗ trợ tra cứu thông tin luật pháp tại Việt Nam:
+            Hệ thống hỗ trợ tra cứu thông tin HR Innotech Việt Nam.
+            - **Mục đích**: Cung cấp thông tin về tuyển dụng, phúc lợi, quy trình làm việc và các vấn đề liên quan đến nhân sự.
 
             """
         )
@@ -64,9 +65,6 @@ def setup_sidebar():
             
             st.session_state.reset_msgs = True
             st.success("Cuộc trò chuyện mới đã được tạo!")
-
-        # Chọn model AI
-        st.header("🤖 Model AI")
 
 # === HIỂN THỊ LỊCH SỬ TRÒ CHUYỆN ===
 def show_chat_histories():
@@ -85,11 +83,6 @@ def show_chat_histories():
 
 def setup_chat_interface():
     st.title("💬 AI Assistant")
-    
-    # Caption động theo model
-    
-    st.caption("🚀 Trợ lý AI về Luật")
-    
     
     msgs = StreamlitChatMessageHistory(key="langchain_messages")
     
@@ -155,7 +148,7 @@ def render():
     Hàm chính điều khiển luồng chương trình
     """
     initialize_app()
-    prompt = st.chat_input("Hãy hỏi tôi bất cứ điều gì về thôn tin tuyển sinh")
+    prompt = st.chat_input("Hãy hỏi tôi đi")
     tab2, tab3 = st.tabs(["Chat", "Lịch sử chat"])
         
     with tab2:

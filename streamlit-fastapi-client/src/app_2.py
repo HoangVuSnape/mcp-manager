@@ -5,10 +5,8 @@ from math import ceil
 import logging
 import time
 import httpx
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-import warnings
-warnings.filterwarnings("ignore")
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 # Custom CSS
 st.markdown("""
@@ -99,15 +97,6 @@ st.markdown("""
         align-items: center;
         margin: 20px 0;
         gap: 20px;
-    }
-    .selection-counter {
-        background-color: #e8f4f8;
-        color: #2c3e50;
-        padding: 8px 12px;
-        border-radius: 8px;
-        font-weight: bold;
-        margin-top: 10px;
-        text-align: center;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -232,15 +221,11 @@ def apply_filters(tools_list, search_query, status_filter):
     
     return filtered_tools
 
-def get_current_page_tool_names(tools_on_page):
-    """Get list of tool names on current page"""
-    return [tool.get("name", "") for tool in tools_on_page]
-
 def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
     """Visualize the list of tools with pagination and toggle functionality."""
     if not filtered_tools:
         st.info("📭 Không có tools nào được tìm thấy.")
-        return [], 0
+        return [], False
     
     # Pagination logic
     total_pages = ceil(len(filtered_tools) / TOOLS_PER_PAGE)
@@ -250,8 +235,6 @@ def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
     with col1:
         if st.button("⬅️ Trước", use_container_width=True, disabled=(current_page <= 1)):
             st.session_state.current_page = max(1, current_page - 1)
-            # Reset select all when changing page
-            st.session_state.select_all_state = False
             st.rerun()
 
     with col2:
@@ -260,8 +243,6 @@ def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
     with col3:
         if st.button("Tiếp ➡️", use_container_width=True, disabled=(current_page >= total_pages)):
             st.session_state.current_page = min(total_pages, current_page + 1)
-            # Reset select all when changing page
-            st.session_state.select_all_state = False
             st.rerun()
     
     # Get tools for current page
@@ -278,10 +259,7 @@ def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
     selected_tools = []
     
     # Get current select_all state
-    select_all = st.session_state.get('select_all_state', False)
-    
-    # Get current page tool names
-    current_page_tool_names = get_current_page_tool_names(tools_on_page)
+    select_all = st.session_state.get('select_all_checkbox', False)
     
     # Display tools in grid layout
     num_rows = ceil(len(tools_on_page) / COLS_PER_ROW)
@@ -309,10 +287,13 @@ def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
                         # Individual checkbox logic
                         checkbox_key = f"checkbox_{name}"
                         
-                        # Determine checkbox value based on select_all state
+                        # Initialize individual selection state based on select_all
+                        if checkbox_key not in st.session_state.individual_selections:
+                            st.session_state.individual_selections[checkbox_key] = select_all
+                        
+                        # If select_all changed, update this checkbox
                         if select_all:
                             checkbox_value = True
-                            st.session_state.individual_selections[checkbox_key] = True
                         else:
                             checkbox_value = st.session_state.individual_selections.get(checkbox_key, False)
                         
@@ -321,7 +302,7 @@ def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
                             "", 
                             value=checkbox_value, 
                             key=f"checkbox_display_{name}_{current_page}",
-                            on_change=lambda name=name: handle_individual_checkbox_change(name, current_page_tool_names)
+                            on_change=lambda name=name: handle_individual_checkbox_change(name)
                         )
                         
                         # Update selection state
@@ -369,31 +350,23 @@ def visualize_tools(filtered_tools, api_url_tools_toggle, current_page=1):
                             except Exception as e:
                                 st.error(f"❌ Error updating {name}: {str(e)}")
     
-    # Count selected tools on current page
-    selected_count = len(selected_tools)
+    # Check if any individual checkbox is selected
+    any_individual_selected = any(st.session_state.individual_selections.get(f"checkbox_{tool.get('name', '')}", False) 
+                                  for tool in filtered_tools)
     
-    return selected_tools, selected_count
+    return selected_tools, any_individual_selected
 
-def handle_individual_checkbox_change(tool_name, current_page_tool_names):
+def handle_individual_checkbox_change(tool_name):
     """Handle individual checkbox state changes"""
     checkbox_key = f"checkbox_{tool_name}"
-    current_page = st.session_state.get('current_page', 1)
-    current_state = st.session_state.get(f"checkbox_display_{tool_name}_{current_page}", False)
+    current_state = st.session_state.get(f"checkbox_display_{tool_name}_{st.session_state.get('current_page', 1)}", False)
     
     # Update the individual selection state
     st.session_state.individual_selections[checkbox_key] = current_state
     
-    # Check if all tools on current page are selected
-    all_current_page_selected = all(
-        st.session_state.individual_selections.get(f"checkbox_{name}", False) 
-        for name in current_page_tool_names
-    )
-    
-    # Update select_all checkbox based on current page selections
-    if not current_state or not all_current_page_selected:
-        st.session_state.select_all_state = False
-    elif all_current_page_selected:
-        st.session_state.select_all_state = True
+    # If any individual checkbox is unchecked, uncheck select_all
+    if not current_state and st.session_state.get('select_all_checkbox', False):
+        st.session_state.select_all_checkbox = False
 
 def sidebar():
     st.sidebar.title("🔧 Add Server Configuration")
@@ -446,8 +419,6 @@ def main():
         st.session_state.individual_selections = {}
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 1
-    if 'select_all_state' not in st.session_state:
-        st.session_state.select_all_state = False
     
     # Search and Control Panel
     st.markdown('<div class="search-container">', unsafe_allow_html=True)
@@ -455,34 +426,28 @@ def main():
     col1, col2, col3, col4, col5 = st.columns([1, 4, 1, 1, 1])
 
     with col1:
-        # Handle Select All logic for current page only
+        # Handle Select All logic
         st.markdown('<div class="select-all-checkbox">', unsafe_allow_html=True)
-        select_all_changed = st.checkbox("🔘 Select All (Current Page)", key="select_all_checkbox")
+        select_all_changed = st.checkbox("🔘 Select All", key="select_all_checkbox")
         
-        # When Select All state changes, update only current page checkboxes
+        # When Select All state changes, update all individual checkboxes
         if 'prev_select_all_state' not in st.session_state:
             st.session_state.prev_select_all_state = False
             
         if st.session_state.prev_select_all_state != select_all_changed:
-            # Select All state changed - only affect current page
-            current_page = st.session_state.get('current_page', 1)
-            
-            # Get current page tools
-            filtered_tools = apply_filters(
-                st.session_state.tools_data, 
-                st.session_state.get('search_query', ''), 
-                st.session_state.get('status_filter', 'All')
-            )
-            
-            start_idx = (current_page - 1) * TOOLS_PER_PAGE
-            end_idx = start_idx + TOOLS_PER_PAGE
-            tools_on_page = filtered_tools[start_idx:end_idx]
-            
-            # Update only current page tool checkboxes
-            for tool in tools_on_page:
-                name = tool.get("name", "")
-                checkbox_key = f"checkbox_{name}"
-                st.session_state.individual_selections[checkbox_key] = select_all_changed
+            # Select All state changed
+            if select_all_changed:
+                # Select all - set all individual checkboxes to True
+                for tool in st.session_state.tools_data:
+                    name = tool.get("name", "")
+                    checkbox_key = f"checkbox_{name}"
+                    st.session_state.individual_selections[checkbox_key] = True
+            else:
+                # Deselect all - set all individual checkboxes to False
+                for tool in st.session_state.tools_data:
+                    name = tool.get("name", "")
+                    checkbox_key = f"checkbox_{name}"
+                    st.session_state.individual_selections[checkbox_key] = False
             
             st.session_state.prev_select_all_state = select_all_changed
         
@@ -490,7 +455,6 @@ def main():
 
     with col2:
         search_query = st.text_input("", placeholder="Enter server/tool name...")
-        st.session_state.search_query = search_query
 
     with col3:
         # Get unique prefixes for filter options
@@ -511,15 +475,14 @@ def main():
             options=filter_options,
             help="Filter tools by status or prefix"
         )
-        st.session_state.status_filter = status_filter
         
     with col4:
         st.markdown('<div class="select-all-checkbox">', unsafe_allow_html=True)
         col4a, col4b = st.columns(2)
         with col4a:
-            on_all_btn = st.button("🟢All On", help="Enable all selected")
+            on_all_btn = st.button("🟢All On", help="Enable all")
         with col4b:
-            off_all_btn = st.button("🔴All Off", help="Disable all selected")
+            off_all_btn = st.button("🔴All Off", help="Disable all")
     
     with col5:
         st.markdown('<div class="select-all-checkbox">', unsafe_allow_html=True)
@@ -558,7 +521,6 @@ def main():
             if refresh_btn:
                 # Reset page to 1 when refreshing
                 st.session_state.current_page = 1
-                st.session_state.select_all_checkbox = False
                 st.rerun()
             
             # Apply filters to get filtered tools
@@ -570,76 +532,35 @@ def main():
                 st.session_state.current_page = 1
             
             # Get tool selection info with pagination
-            selected_tools, selected_count = visualize_tools(
+            selected_tools, any_individual_selected = visualize_tools(
                 filtered_tools, 
                 api_url_tools_toggle, 
                 st.session_state.current_page
             )
             
-            # Display selection counter
-            if selected_count > 0:
-                st.markdown(f"""
-                <div class="selection-counter">
-                    📋 Đã chọn: {selected_count} tool(s) trên trang này
-                </div>
-                """, unsafe_allow_html=True)
-            
             # Handle All On/Off buttons with improved logic
             if on_all_btn or off_all_btn:
-                if selected_count == 0:
-                    st.warning("⚠️ Vui lòng chọn ít nhất một tool để thực hiện thao tác.")
+                if not select_all:
+                    st.warning("⚠️ Please select 'Select All' checkbox first to enable/disable all tools.")
                 else:
-                    # Get selected tools from current page
-                    selected_tools_for_action = [
-                        tool for tool in filtered_tools[
-                            (st.session_state.current_page - 1) * TOOLS_PER_PAGE:
-                            st.session_state.current_page * TOOLS_PER_PAGE
-                        ]
-                        if st.session_state.individual_selections.get(f"checkbox_{tool.get('name', '')}", False)
-                    ]
-                    
+                    # All selected via Select All checkbox
                     enable_all = on_all_btn
                     action_text = "Enabling" if enable_all else "Disabling"
                     
-                    with st.spinner(f"{action_text} selected tools..."):
-                        success_count = 0
-                        failed_tools = []
-                        
-                        for tool in selected_tools_for_action:
-                            name = tool.get("name", "")
-                            enabled = tool.get("enabled", False)
-                            
-                            # Only update if state is different
-                            if enabled != enable_all:
-                                prefix = name.split("_")[0] if "_" in name else name
-                                
-                                payload = {
-                                    "prefix": prefix,
-                                    "name": name,
-                                    "enabled": enable_all
-                                }
-                                
-                                try:
-                                    result = tool_enabled(api_url_tools_toggle, payload)
-                                    if result:
-                                        success_count += 1
-                                    else:
-                                        failed_tools.append(name)
-                                except Exception as e:
-                                    failed_tools.append(f"{name} (Error: {str(e)})")
-                        logger.info(f"Success count: {success_count}, Failed tools: {failed_tools}")
-                        if success_count > 0:
-                            st.success(f"✅ Updated {success_count} tools successfully" + (f", Failed: {failed_tools}" if failed_tools else ""))
-                            # Reset selections after successful operation
-                            # st.session_state.select_all_checkbox = False
-                            # for tool in selected_tools_for_action:
-                            #     name = tool.get("name", "")
-                            #     checkbox_key = f"checkbox_{name}"
-                            #     st.session_state.individual_selections[checkbox_key] = False
+                    with st.spinner(f"{action_text} all filtered tools..."):
+                        success, message = update_all_tools_filtered(
+                            filtered_tools, 
+                            enable_all, 
+                            api_url_tools_toggle, 
+                            search_query,
+                            status_filter
+                        )
+                        if success:
+                            st.success(f"✅ {message}")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(f"❌ Failed to update tools: {failed_tools}")
+                            st.error(f"❌ {message}")
             
         except Exception as e:
             st.error(f"❌ Error loading tools: {str(e)}")

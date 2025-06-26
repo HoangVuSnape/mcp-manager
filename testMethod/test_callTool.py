@@ -30,11 +30,15 @@ async def main():
         pets = json.loads(json_string)
 
         # Duyệt và in từng `id` và `name`
-        for pet in pets[:5]:
+        for pet in pets:
             pet_id = pet.get('id')
             pet_name = pet.get('name')
             print(f"ID: {pet_id}, Name: {pet_name}")
             print(f"ID: {type(pet_id)}, Name: {type(pet_name)}")
+        
+        # Save pets to json file
+        with open('pets.json', 'w') as f:
+            json.dump(pets, f, indent=4)
         
 
 if __name__ == "__main__":

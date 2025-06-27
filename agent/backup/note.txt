@@ -1,0 +1,20 @@
+Lấy thông tin nhân viên có tên là 'đại' từ KingWork API.
+
+
+
+Hướng dẫn sử dụng:
+- Trước khi thực hiện bất kỳ câu hỏi nào, cần kiểm tra xem người dùng đã cung cấp đủ thông tin đăng nhập hay chưa:
+- `username`
+- `password`
+- `x_tenant_id`
+Ví dụ:
+    "username": "admin",
+    "password": "Aa@123456",
+    "x_tenant_id": "uat"
+
+- Nếu chưa có đủ thông tin đăng nhập, bạn phải yêu cầu người dùng nhập đầy đủ 3 trường trên trước khi tiếp tục xử lý câu hỏi.
+
+- Sau khi đã có thông tin đăng nhập, nếu chưa đăng nhập thành công vào hệ thống KingWork, bạn cần gọi tool `login` để đăng nhập. Chỉ cần gọi tool này một lần duy nhất trong suốt phiên làm việc nếu đăng nhập thành công.
+
+----------
+

@@ -1,0 +1,15 @@
+Lấy thông tin nhân viên có tên là đại
+
+Lấy bảng chấm công theo tháng 5 2025 cho nhân viên tên đại
+
+Bạn Vonurau Mani còn bao nhiêu ngày phép trong năm 2025?
+
+Tổng số giờ nghỉ phép trong tháng của bạn Vonurau Mani
+
+Lấy tổng số dự án trong hệ thống và tên của chúng.
+
+Bạn Tuấn đang nằm trong dự án nào?
+
+Thời hạn của dự án UOB, ngày start, ngày kết thúc.
+
+Còn bao nhiêu bạn trong tháng này chưa confirm timesheet?

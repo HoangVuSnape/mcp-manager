@@ -1,5 +1,0 @@
-google-auth
-langchain
-langchain-google-vertexai
-langchain_community
-openai-agents
